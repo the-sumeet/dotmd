@@ -27,3 +27,17 @@ export function DataDir(): $CancellablePromise<string> {
 export function ListTree(): $CancellablePromise<$models.FileNode[] | null> {
     return $Call.ByID(320396527);
 }
+
+/**
+ * ReadFile returns the contents of a file in the data directory.
+ */
+export function ReadFile(rel: string): $CancellablePromise<string> {
+    return $Call.ByID(88318641, rel);
+}
+
+/**
+ * WriteFile atomically replaces the contents of a file in the data directory.
+ */
+export function WriteFile(rel: string, content: string): $CancellablePromise<void> {
+    return $Call.ByID(3601323672, rel, content);
+}

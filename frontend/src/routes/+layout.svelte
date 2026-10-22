@@ -5,6 +5,7 @@
   import { Separator } from "$lib/components/ui/separator/index.js";
   import { Window } from "@wailsio/runtime";
   import AppSidebar from "$lib/components/app-sidebar.svelte";
+  import { editor } from "$lib/stores/editor.svelte.js";
   let { children } = $props();
 
   // In native macOS fullscreen the traffic lights are hidden and the window
@@ -38,21 +39,23 @@
         orientation="vertical"
         class="me-2 data-vertical:h-4 data-vertical:self-auto"
       />
-      <Breadcrumb.Root>
-        <Breadcrumb.List>
-          <Breadcrumb.Item class="hidden md:block">
-            <Breadcrumb.Link href="##">lib</Breadcrumb.Link>
-          </Breadcrumb.Item>
-          <Breadcrumb.Separator class="hidden md:block" />
-          <Breadcrumb.Item class="hidden md:block">
-            <Breadcrumb.Link href="##">components</Breadcrumb.Link>
-          </Breadcrumb.Item>
-          <Breadcrumb.Separator class="hidden md:block" />
-          <Breadcrumb.Item>
-            <Breadcrumb.Page>button.svelte</Breadcrumb.Page>
-          </Breadcrumb.Item>
-        </Breadcrumb.List>
-      </Breadcrumb.Root>
+      {#if editor.path}
+        {@const segments = editor.path.split("/")}
+        <Breadcrumb.Root>
+          <Breadcrumb.List>
+            {#each segments as segment, i (i)}
+              {#if i < segments.length - 1}
+                <Breadcrumb.Item class="hidden md:block">{segment}</Breadcrumb.Item>
+                <Breadcrumb.Separator class="hidden md:block" />
+              {:else}
+                <Breadcrumb.Item>
+                  <Breadcrumb.Page>{segment}{editor.dirty ? " •" : ""}</Breadcrumb.Page>
+                </Breadcrumb.Item>
+              {/if}
+            {/each}
+          </Breadcrumb.List>
+        </Breadcrumb.Root>
+      {/if}
     </header>
     <div class="flex min-h-0 flex-1 flex-col gap-4 p-4">
       {@render children()}

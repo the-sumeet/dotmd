@@ -6,6 +6,7 @@
 	import * as Sidebar from "$lib/components/ui/sidebar/index.js";
 	import type { ComponentProps } from "svelte";
 	import { onMount } from "svelte";
+	import { editor } from "$lib/stores/editor.svelte.js";
 	import { FileService } from "../../../bindings/changeme";
 	import type { FileNode } from "../../../bindings/changeme/models.js";
 
@@ -43,7 +44,10 @@
 {#snippet Tree({ node }: { node: FileNode })}
 	{#if !node.isDir}
 		<Sidebar.MenuItem>
-			<Sidebar.MenuButton>
+			<Sidebar.MenuButton
+				isActive={editor.path === node.path}
+				onclick={() => editor.open(node.path)}
+			>
 				<FileIcon />
 				{node.name}
 			</Sidebar.MenuButton>

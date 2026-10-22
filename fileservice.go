@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -39,6 +40,53 @@ func (f *FileService) DataDir() string {
 // ListTree returns the contents of the data directory, folders first.
 func (f *FileService) ListTree() ([]FileNode, error) {
 	return readTree(f.dir, "")
+}
+
+// resolve maps a slash-separated relative path to an absolute path inside the data directory.
+func (f *FileService) resolve(rel string) (string, error) {
+	abs := filepath.Join(f.dir, filepath.FromSlash(rel))
+	inside, err := filepath.Rel(f.dir, abs)
+	if err != nil || inside == "." || inside == ".." || strings.HasPrefix(inside, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("invalid path %q", rel)
+	}
+	return abs, nil
+}
+
+// ReadFile returns the contents of a file in the data directory.
+func (f *FileService) ReadFile(rel string) (string, error) {
+	abs, err := f.resolve(rel)
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(abs)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// WriteFile atomically replaces the contents of a file in the data directory.
+func (f *FileService) WriteFile(rel, content string) error {
+	abs, err := f.resolve(rel)
+	if err != nil {
+		return err
+	}
+	if info, err := os.Stat(abs); err == nil && info.IsDir() {
+		return fmt.Errorf("%q is a directory", rel)
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(abs), ".dotmd-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.WriteString(content); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), abs)
 }
 
 func readTree(root, rel string) ([]FileNode, error) {
