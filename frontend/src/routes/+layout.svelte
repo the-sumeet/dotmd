@@ -1,15 +1,15 @@
 <script lang="ts">
   import "../app.css";
   import * as Breadcrumb from "$lib/components/ui/breadcrumb/index.js";
-	import * as Sidebar from "$lib/components/ui/sidebar/index.js";
-	import { Separator } from "$lib/components/ui/separator/index.js";
-	import AppSidebar from "$lib/components/app-sidebar.svelte";
+  import * as Sidebar from "$lib/components/ui/sidebar/index.js";
+  import { Separator } from "$lib/components/ui/separator/index.js";
+  import AppSidebar from "$lib/components/app-sidebar.svelte";
   let { children } = $props();
 </script>
 
 <Sidebar.Provider>
   <AppSidebar />
-  <Sidebar.Inset>
+  <Sidebar.Inset class="h-svh">
     <header class="flex h-16 shrink-0 items-center gap-2 border-b px-4">
       <Sidebar.Trigger class="-ms-1" />
       <Separator
@@ -32,7 +32,7 @@
         </Breadcrumb.List>
       </Breadcrumb.Root>
     </header>
-    <div class="flex flex-1 flex-col gap-4 p-4">
+    <div class="flex min-h-0 flex-1 flex-col gap-4 p-4">
       {@render children()}
     </div>
   </Sidebar.Inset>
