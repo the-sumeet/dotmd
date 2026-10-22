@@ -174,3 +174,24 @@
     @apply bg-background text-foreground;
   }
 }
+/* Markdown editor: draw from the app's tokens so it follows the `.dark` class with the
+   rest of the UI, instead of the OS light/dark setting. */
+.sveltedown {
+  color-scheme: light;
+  --md-font-family: var(--font-sans);
+  --md-font-mono: var(--font-mono);
+  --md-text: var(--foreground);
+  --md-bg: var(--background);
+  --md-muted: var(--muted-foreground);
+  --md-heading-color: var(--foreground);
+  --md-link-color: var(--primary);
+  --md-accent: var(--primary);
+  --md-code-bg: var(--muted);
+  --md-code-block-bg: var(--card);
+  --md-border: var(--border);
+  --md-selection: color-mix(in oklch, var(--primary) 25%, transparent);
+  --md-caret: var(--foreground);
+}
+.dark .sveltedown {
+  color-scheme: dark;
+}
