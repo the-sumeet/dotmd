@@ -18,7 +18,8 @@
 
 <Toaster position="bottom-right" />
 
-<Sidebar.Provider>
+<!-- Wider than the 16rem default so the file explorer (next to the icon rail) has room for names. -->
+<Sidebar.Provider style="--sidebar-width: 20rem;">
   <AppSidebar />
   <Sidebar.Inset class="h-svh">
     <!-- When the sidebar is collapsed only the narrow icon rail is left of the header, so clear the rest of the macOS traffic lights. -->
