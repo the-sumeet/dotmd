@@ -200,7 +200,9 @@
           ? "Name can't contain / or \\."
           : name.startsWith(".")
             ? "Names starting with . are hidden from the file list."
-            : null;
+            : new TextEncoder().encode(name).length > 255
+              ? "Name is too long (max 255 bytes)."
+              : null;
     if (problem) {
       toast.error("Invalid name", { description: problem });
       return;
@@ -324,7 +326,8 @@
   </Sidebar.Root>
 
   <!-- File explorer -->
-  <Sidebar.Root collapsible="none"class="hidden flex-1 md:flex" bind:ref {...restProps}>
+  <!-- min-w-0 so the panel can't grow past the sidebar to fit a long name, and the name truncates instead. -->
+  <Sidebar.Root collapsible="none" class="hidden min-w-0 flex-1 md:flex" bind:ref {...restProps}>
     <!-- Reserve space for the macOS traffic lights (hidden-inset title bar) and keep it draggable. -->
     <Sidebar.Header
       class={["shrink-0", windowState.fullscreen ? "h-4" : "h-12"]}
@@ -379,7 +382,7 @@
 <AlertDialog.Root bind:open={deleteOpen}>
   <AlertDialog.Content>
     <AlertDialog.Header>
-      <AlertDialog.Title>Delete {target?.name}?</AlertDialog.Title>
+      <AlertDialog.Title class="wrap-anywhere">Delete {target?.name}?</AlertDialog.Title>
       <AlertDialog.Description>
         {target?.isDir
           ? "This permanently deletes the folder and everything in it."
@@ -430,12 +433,14 @@
           {#snippet child({ props })}
             <Sidebar.MenuButton
               {...props}
+              class="px-1.5"
+              title={node.path}
               data-path={node.path}
               isActive={editor.path === node.path}
               onclick={() => editor.open(node.path)}
             >
               <FileIcon />
-              {node.name}
+              <span>{node.name}</span>
             </Sidebar.MenuButton>
           {/snippet}
         </ContextMenu.Trigger>
@@ -456,10 +461,15 @@
             {#snippet child({ props: collapsibleProps })}
               <ContextMenu.Trigger>
                 {#snippet child({ props })}
-                  <Sidebar.MenuButton {...mergeProps(collapsibleProps, props)} data-path={node.path}>
+                  <Sidebar.MenuButton
+                    {...mergeProps(collapsibleProps, props)}
+                    class="px-1.5"
+                    title={node.path}
+                    data-path={node.path}
+                  >
                     <ChevronRightIcon class="transition-transform" />
                     <FolderIcon />
-                    {node.name}
+                    <span>{node.name}</span>
                   </Sidebar.MenuButton>
                 {/snippet}
               </ContextMenu.Trigger>
@@ -468,7 +478,8 @@
           {@render ItemMenu(node)}
         </ContextMenu.Root>
         <Collapsible.Content>
-          <Sidebar.MenuSub>
+          <!-- Compact indent so deep folders leave room for names; the guide line sits under the parent's chevron. -->
+          <Sidebar.MenuSub class="mx-0 ms-3 ps-0.5 pe-0">
             {#each node.children ?? [] as child (child.path)}
               {@render Tree({ node: child })}
             {/each}

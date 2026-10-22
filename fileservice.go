@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/adrg/xdg"
 )
@@ -145,14 +146,16 @@ func (f *FileService) Duplicate(rel string) (string, error) {
 	if !info.IsDir() {
 		ext = filepath.Ext(src)
 	}
-	base := strings.TrimSuffix(src, ext)
+	dir := filepath.Dir(src)
+	stem := strings.TrimSuffix(filepath.Base(src), ext)
 	// Claim the destination atomically, so the cleanup below only ever removes what we created.
 	var dst string
 	for i := 1; ; i++ {
-		dst = base + " copy" + ext
+		suffix := " copy" + ext
 		if i > 1 {
-			dst = fmt.Sprintf("%s copy %d%s", base, i, ext)
+			suffix = fmt.Sprintf(" copy %d%s", i, ext)
 		}
+		dst = filepath.Join(dir, fitName(stem, suffix)+suffix)
 		err = claim(dst, info)
 		if err == nil {
 			break
@@ -175,6 +178,21 @@ func (f *FileService) Duplicate(rel string) (string, error) {
 		return "", err
 	}
 	return filepath.ToSlash(out), nil
+}
+
+// maxNameBytes is the longest file name most filesystems allow (NAME_MAX on macOS and Linux).
+const maxNameBytes = 255
+
+// fitName trims stem so that stem+suffix fits in maxNameBytes, without splitting a UTF-8 character.
+func fitName(stem, suffix string) string {
+	n := max(maxNameBytes-len(suffix), 0)
+	if len(stem) <= n {
+		return stem
+	}
+	for n > 0 && !utf8.RuneStart(stem[n]) {
+		n--
+	}
+	return stem[:n]
 }
 
 // claim creates an empty file or folder at path, failing with fs.ErrExist if anything is already there.

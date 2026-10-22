@@ -17,6 +17,9 @@
 	toastOptions={{
 		classes: {
 			toast: "cn-toast",
+			// Long file names and paths have no spaces to break at.
+			title: "wrap-anywhere",
+			description: "wrap-anywhere",
 		},
 	}}
 	{...restProps}

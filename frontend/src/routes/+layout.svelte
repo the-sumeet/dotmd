@@ -36,18 +36,28 @@
       />
       {#if editor.path}
         {@const segments = editor.path.split("/")}
-        <Breadcrumb.Root>
-          <Breadcrumb.List>
-            {#each segments as segment, i (i)}
-              {#if i < segments.length - 1}
-                <Breadcrumb.Item class="hidden md:block">{segment}</Breadcrumb.Item>
-                <Breadcrumb.Separator class="hidden md:block" />
-              {:else}
-                <Breadcrumb.Item>
-                  <Breadcrumb.Page>{segment}{editor.dirty ? " •" : ""}</Breadcrumb.Page>
-                </Breadcrumb.Item>
-              {/if}
+        {@const name = segments[segments.length - 1]}
+        <!-- Deep paths collapse to first › … › parent › file (null marks the ellipsis); long names truncate. -->
+        {@const folders =
+          segments.length > 3
+            ? [segments[0], null, segments[segments.length - 2]]
+            : segments.slice(0, -1)}
+        <Breadcrumb.Root class="min-w-0" title={editor.path}>
+          <Breadcrumb.List class="min-w-0 flex-nowrap">
+            {#each folders as folder, i (i)}
+              <Breadcrumb.Item class="hidden min-w-0 md:inline-flex">
+                {#if folder === null}
+                  <Breadcrumb.Ellipsis />
+                {:else}
+                  <span class="max-w-40 truncate">{folder}</span>
+                {/if}
+              </Breadcrumb.Item>
+              <Breadcrumb.Separator class="hidden md:block" />
             {/each}
+            <Breadcrumb.Item class="min-w-0">
+              <Breadcrumb.Page class="truncate">{name}</Breadcrumb.Page>
+              {#if editor.dirty}<span class="text-foreground">•</span>{/if}
+            </Breadcrumb.Item>
           </Breadcrumb.List>
         </Breadcrumb.Root>
       {/if}
