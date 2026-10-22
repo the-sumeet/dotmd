@@ -23,6 +23,8 @@
 </script>
 
 <Sidebar.Root bind:ref {...restProps}>
+	<!-- Reserve space for the macOS traffic lights (hidden-inset title bar) and keep it draggable. -->
+	<Sidebar.Header class="h-12 shrink-0" style="--wails-draggable: drag" />
 	<Sidebar.Content>
 		<Sidebar.Group>
 			<Sidebar.GroupLabel>Files</Sidebar.GroupLabel>
