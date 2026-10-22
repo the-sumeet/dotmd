@@ -15,10 +15,32 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * AbsPath returns the absolute filesystem path of an entry in the data directory.
+ */
+export function AbsPath(rel: string): $CancellablePromise<string> {
+    return $Call.ByID(3472718358, rel);
+}
+
+/**
  * DataDir returns the absolute path of the data directory.
  */
 export function DataDir(): $CancellablePromise<string> {
     return $Call.ByID(4032888722);
+}
+
+/**
+ * Delete permanently removes a file, or a folder and everything in it.
+ */
+export function Delete(rel: string): $CancellablePromise<void> {
+    return $Call.ByID(2618984248, rel);
+}
+
+/**
+ * Duplicate copies a file or folder next to itself as "name copy.ext" (or "name copy 2.ext", …)
+ * and returns the new relative path.
+ */
+export function Duplicate(rel: string): $CancellablePromise<string> {
+    return $Call.ByID(1004623708, rel);
 }
 
 /**
@@ -33,6 +55,13 @@ export function ListTree(): $CancellablePromise<$models.FileNode[] | null> {
  */
 export function ReadFile(rel: string): $CancellablePromise<string> {
     return $Call.ByID(88318641, rel);
+}
+
+/**
+ * Rename moves a file or folder to a new path. It fails if the destination already exists.
+ */
+export function Rename($from: string, to: string): $CancellablePromise<void> {
+    return $Call.ByID(1462832321, $from, to);
 }
 
 /**

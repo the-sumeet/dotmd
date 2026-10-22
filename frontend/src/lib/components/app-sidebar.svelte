@@ -2,12 +2,25 @@
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
   import FileIcon from "@lucide/svelte/icons/file";
   import FolderIcon from "@lucide/svelte/icons/folder";
+  import PencilIcon from "@lucide/svelte/icons/pencil";
+  import CopyIcon from "@lucide/svelte/icons/copy";
+  import ClipboardIcon from "@lucide/svelte/icons/clipboard";
+  import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
+  import { Button } from "$lib/components/ui/button/index.js";
   import * as Collapsible from "$lib/components/ui/collapsible/index.js";
+  import * as ContextMenu from "$lib/components/ui/context-menu/index.js";
+  import * as Dialog from "$lib/components/ui/dialog/index.js";
+  import { Input } from "$lib/components/ui/input/index.js";
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
+  import { mergeProps } from "bits-ui";
   import type { ComponentProps } from "svelte";
-  import { onMount } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
+  import { toast } from "svelte-sonner";
+  import { Clipboard } from "@wailsio/runtime";
   import { windowState } from "$lib/stores/window.svelte.js";
   import { editor } from "$lib/stores/editor.svelte.js";
+  import { files } from "$lib/stores/files.svelte.js";
+  import { relativeNotePath } from "$lib/note-links.js";
   import { FileService } from "../../../bindings/changeme";
   import type { FileNode } from "../../../bindings/changeme/models.js";
   import CommandIcon from "@lucide/svelte/icons/command";
@@ -22,7 +35,6 @@
     ...restProps
   }: ComponentProps<typeof Sidebar.Root> = $props();
 
-  let tree = $state<FileNode[]>([]);
   const data = {
     user: {
       name: "shadcn",
@@ -144,13 +156,96 @@
       },
     ],
   };
-  onMount(async () => {
-    try {
-      tree = (await FileService.ListTree()) ?? [];
-    } catch (err) {
-      console.error("Failed to load data directory", err);
-    }
+  onMount(() => {
+    void files.refresh();
   });
+
+  // Expand the folders above the open file and scroll it into view.
+  $effect(() => {
+    const path = editor.path;
+    if (path === null) return;
+    untrack(() => files.reveal(path));
+    void tick().then(() =>
+      document
+        .querySelector(`[data-path="${CSS.escape(path)}"]`)
+        ?.scrollIntoView({ block: "nearest" }),
+    );
+  });
+
+  // Rename / delete dialogs, opened from an item's context menu.
+  let target = $state<FileNode | null>(null);
+  let renameOpen = $state(false);
+  let deleteOpen = $state(false);
+  let newName = $state("");
+  let renameInput = $state<HTMLInputElement | null>(null);
+
+  function startRename(node: FileNode) {
+    target = node;
+    newName = node.name;
+    renameOpen = true;
+  }
+
+  function startDelete(node: FileNode) {
+    target = node;
+    deleteOpen = true;
+  }
+
+  async function submitRename() {
+    if (!target) return;
+    const name = newName.trim();
+    const problem =
+      name === ""
+        ? "Name can't be empty."
+        : /[/\\]/.test(name)
+          ? "Name can't contain / or \\."
+          : name.startsWith(".")
+            ? "Names starting with . are hidden from the file list."
+            : null;
+    if (problem) {
+      toast.error("Invalid name", { description: problem });
+      return;
+    }
+    try {
+      await files.rename(target.path, name);
+      renameOpen = false;
+    } catch (err) {
+      toast.error("Couldn't rename", { description: String(err) });
+    }
+  }
+
+  async function confirmDelete() {
+    if (!target) return;
+    const node = target;
+    deleteOpen = false;
+    try {
+      await files.delete(node.path);
+      toast.success(`Deleted ${node.name}`);
+    } catch (err) {
+      toast.error("Couldn't delete", { description: String(err) });
+    }
+  }
+
+  async function duplicate(node: FileNode) {
+    try {
+      const copy = await files.duplicate(node.path);
+      toast.success(`Created ${copy.split("/").pop()}`);
+    } catch (err) {
+      toast.error("Couldn't duplicate", { description: String(err) });
+    }
+  }
+
+  async function copyPath(node: FileNode, relativeToNote: boolean) {
+    try {
+      await Clipboard.SetText(
+        relativeToNote && editor.path !== null
+          ? relativeNotePath(editor.path, node.path)
+          : await FileService.AbsPath(node.path),
+      );
+      toast.success("Copied path to clipboard");
+    } catch (err) {
+      toast.error("Couldn't copy path", { description: String(err) });
+    }
+  }
 
   let activeItem = $state(data.navMain[0]);
   let mails = $state(data.mails);
@@ -240,7 +335,7 @@
         <Sidebar.GroupLabel>Files</Sidebar.GroupLabel>
         <Sidebar.GroupContent>
           <Sidebar.Menu>
-            {#each tree as node (node.path)}
+            {#each files.tree as node (node.path)}
               {@render Tree({ node })}
             {/each}
           </Sidebar.Menu>
@@ -251,31 +346,127 @@
   </Sidebar.Root>
 </Sidebar.Root>
 
+<Dialog.Root bind:open={renameOpen}>
+  <Dialog.Content
+    class="sm:max-w-sm"
+    onOpenAutoFocus={(e) => {
+      // Focus the input with the name selected, minus the extension for files.
+      e.preventDefault();
+      renameInput?.focus();
+      const dot = target && !target.isDir ? newName.lastIndexOf(".") : -1;
+      renameInput?.setSelectionRange(0, dot > 0 ? dot : newName.length);
+    }}
+  >
+    <form
+      class="grid gap-4"
+      onsubmit={(e) => {
+        e.preventDefault();
+        void submitRename();
+      }}
+    >
+      <Dialog.Header>
+        <Dialog.Title>Rename {target?.isDir ? "folder" : "file"}</Dialog.Title>
+      </Dialog.Header>
+      <Input bind:ref={renameInput} bind:value={newName} aria-label="New name" />
+      <Dialog.Footer>
+        <Button type="button" variant="outline" onclick={() => (renameOpen = false)}>Cancel</Button>
+        <Button type="submit">Rename</Button>
+      </Dialog.Footer>
+    </form>
+  </Dialog.Content>
+</Dialog.Root>
+
+<AlertDialog.Root bind:open={deleteOpen}>
+  <AlertDialog.Content>
+    <AlertDialog.Header>
+      <AlertDialog.Title>Delete {target?.name}?</AlertDialog.Title>
+      <AlertDialog.Description>
+        {target?.isDir
+          ? "This permanently deletes the folder and everything in it."
+          : "This permanently deletes the file."}
+      </AlertDialog.Description>
+    </AlertDialog.Header>
+    <AlertDialog.Footer>
+      <AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+      <AlertDialog.Action variant="destructive" onclick={() => void confirmDelete()}>
+        Delete
+      </AlertDialog.Action>
+    </AlertDialog.Footer>
+  </AlertDialog.Content>
+</AlertDialog.Root>
+
+{#snippet ItemMenu(node: FileNode)}
+  <ContextMenu.Content class="w-56">
+    <ContextMenu.Item onSelect={() => startRename(node)}>
+      <PencilIcon />
+      Rename
+    </ContextMenu.Item>
+    <ContextMenu.Item onSelect={() => void duplicate(node)}>
+      <CopyIcon />
+      Duplicate
+    </ContextMenu.Item>
+    <ContextMenu.Separator />
+    <ContextMenu.Item onSelect={() => void copyPath(node, false)}>
+      <ClipboardIcon />
+      Copy Path
+    </ContextMenu.Item>
+    <ContextMenu.Item disabled={editor.path === null} onSelect={() => void copyPath(node, true)}>
+      <ClipboardIcon />
+      Copy Path from Open Note
+    </ContextMenu.Item>
+    <ContextMenu.Separator />
+    <ContextMenu.Item variant="destructive" onSelect={() => startDelete(node)}>
+      <Trash2Icon />
+      Delete
+    </ContextMenu.Item>
+  </ContextMenu.Content>
+{/snippet}
+
 {#snippet Tree({ node }: { node: FileNode })}
   {#if !node.isDir}
     <Sidebar.MenuItem>
-      <Sidebar.MenuButton
-        isActive={editor.path === node.path}
-        onclick={() => editor.open(node.path)}
-      >
-        <FileIcon />
-        {node.name}
-      </Sidebar.MenuButton>
+      <ContextMenu.Root>
+        <ContextMenu.Trigger>
+          {#snippet child({ props })}
+            <Sidebar.MenuButton
+              {...props}
+              data-path={node.path}
+              isActive={editor.path === node.path}
+              onclick={() => editor.open(node.path)}
+            >
+              <FileIcon />
+              {node.name}
+            </Sidebar.MenuButton>
+          {/snippet}
+        </ContextMenu.Trigger>
+        {@render ItemMenu(node)}
+      </ContextMenu.Root>
     </Sidebar.MenuItem>
   {:else}
     <Sidebar.MenuItem>
       <Collapsible.Root
+        bind:open={
+          () => files.expanded.has(node.path),
+          (open) => files.setExpanded(node.path, open)
+        }
         class="group/collapsible [&[data-state=open]>button>svg:first-child]:rotate-90"
       >
-        <Collapsible.Trigger>
-          {#snippet child({ props })}
-            <Sidebar.MenuButton {...props}>
-              <ChevronRightIcon class="transition-transform" />
-              <FolderIcon />
-              {node.name}
-            </Sidebar.MenuButton>
-          {/snippet}
-        </Collapsible.Trigger>
+        <ContextMenu.Root>
+          <Collapsible.Trigger>
+            {#snippet child({ props: collapsibleProps })}
+              <ContextMenu.Trigger>
+                {#snippet child({ props })}
+                  <Sidebar.MenuButton {...mergeProps(collapsibleProps, props)} data-path={node.path}>
+                    <ChevronRightIcon class="transition-transform" />
+                    <FolderIcon />
+                    {node.name}
+                  </Sidebar.MenuButton>
+                {/snippet}
+              </ContextMenu.Trigger>
+            {/snippet}
+          </Collapsible.Trigger>
+          {@render ItemMenu(node)}
+        </ContextMenu.Root>
         <Collapsible.Content>
           <Sidebar.MenuSub>
             {#each node.children ?? [] as child (child.path)}

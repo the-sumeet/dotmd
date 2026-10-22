@@ -3,6 +3,7 @@
   import * as Breadcrumb from "$lib/components/ui/breadcrumb/index.js";
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
   import { Separator } from "$lib/components/ui/separator/index.js";
+  import { Toaster } from "$lib/components/ui/sonner/index.js";
   import AppSidebar from "$lib/components/app-sidebar.svelte";
   import { windowState } from "$lib/stores/window.svelte.js";
   import { editor } from "$lib/stores/editor.svelte.js";
@@ -14,6 +15,8 @@
 </script>
 
 <svelte:window onresize={() => windowState.refresh()} />
+
+<Toaster position="bottom-right" />
 
 <Sidebar.Provider>
   <AppSidebar />

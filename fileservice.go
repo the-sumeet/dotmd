@@ -1,7 +1,10 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -87,6 +90,147 @@ func (f *FileService) WriteFile(rel, content string) error {
 		return err
 	}
 	return os.Rename(tmp.Name(), abs)
+}
+
+// AbsPath returns the absolute filesystem path of an entry in the data directory.
+func (f *FileService) AbsPath(rel string) (string, error) {
+	return f.resolve(rel)
+}
+
+// Rename moves a file or folder to a new path. It fails if the destination already exists.
+func (f *FileService) Rename(from, to string) error {
+	src, err := f.resolve(from)
+	if err != nil {
+		return err
+	}
+	dst, err := f.resolve(to)
+	if err != nil {
+		return err
+	}
+	srcInfo, err := os.Lstat(src)
+	if err != nil {
+		return err
+	}
+	// A case-only rename on a case-insensitive filesystem finds the source itself.
+	if dstInfo, err := os.Lstat(dst); err == nil && !os.SameFile(srcInfo, dstInfo) {
+		return fmt.Errorf("%q already exists", to)
+	}
+	return os.Rename(src, dst)
+}
+
+// Delete permanently removes a file, or a folder and everything in it.
+func (f *FileService) Delete(rel string) error {
+	abs, err := f.resolve(rel)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Lstat(abs); err != nil {
+		return err
+	}
+	return os.RemoveAll(abs)
+}
+
+// Duplicate copies a file or folder next to itself as "name copy.ext" (or "name copy 2.ext", …)
+// and returns the new relative path.
+func (f *FileService) Duplicate(rel string) (string, error) {
+	src, err := f.resolve(rel)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(src)
+	if err != nil {
+		return "", err
+	}
+	ext := ""
+	if !info.IsDir() {
+		ext = filepath.Ext(src)
+	}
+	base := strings.TrimSuffix(src, ext)
+	// Claim the destination atomically, so the cleanup below only ever removes what we created.
+	var dst string
+	for i := 1; ; i++ {
+		dst = base + " copy" + ext
+		if i > 1 {
+			dst = fmt.Sprintf("%s copy %d%s", base, i, ext)
+		}
+		err = claim(dst, info)
+		if err == nil {
+			break
+		}
+		if !errors.Is(err, fs.ErrExist) {
+			return "", err
+		}
+	}
+	if info.IsDir() {
+		err = copyDir(src, dst)
+	} else {
+		err = copyFile(src, dst, info.Mode())
+	}
+	if err != nil {
+		os.RemoveAll(dst)
+		return "", err
+	}
+	out, err := filepath.Rel(f.dir, dst)
+	if err != nil {
+		return "", err
+	}
+	return filepath.ToSlash(out), nil
+}
+
+// claim creates an empty file or folder at path, failing with fs.ErrExist if anything is already there.
+func claim(path string, like os.FileInfo) error {
+	if like.IsDir() {
+		return os.Mkdir(path, like.Mode().Perm())
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, like.Mode().Perm())
+	if err != nil {
+		return err
+	}
+	return f.Close()
+}
+
+func copyFile(src, dst string, mode os.FileMode) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode.Perm())
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
+}
+
+func copyDir(src, dst string) error {
+	return filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		switch {
+		case rel == ".":
+			return nil // dst itself was already created by claim
+		case d.IsDir():
+			return os.Mkdir(target, info.Mode().Perm())
+		case info.Mode().IsRegular():
+			return copyFile(path, target, info.Mode())
+		default:
+			return nil // skip symlinks and special files
+		}
+	})
 }
 
 func readTree(root, rel string) ([]FileNode, error) {

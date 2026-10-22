@@ -1,3 +1,4 @@
+import { toast } from "svelte-sonner";
 import { FileService } from "../../../bindings/changeme";
 
 const DEBOUNCE_MS = 1000;
@@ -8,6 +9,8 @@ class EditorStore {
   content = $state("");
   dirty = $state(false);
   loading = $state(false);
+  /** Changes whenever a different document is loaded; unlike `path`, not on rename. */
+  docId = $state(0);
 
   #debounce: ReturnType<typeof setTimeout> | undefined;
   #interval: ReturnType<typeof setInterval> | undefined;
@@ -27,10 +30,48 @@ class EditorStore {
       this.path = path;
       this.content = text;
       this.dirty = false;
+      this.docId++;
     } catch (err) {
       console.error("Failed to read file", path, err);
+      toast.error("Couldn't open note", { description: path });
     } finally {
       if (seq === this.#openSeq) this.loading = false;
+    }
+  }
+
+  /** Close the current file, discarding unsaved changes. Resolves once any in-flight write has finished. */
+  close(): Promise<void> {
+    ++this.#openSeq;
+    clearTimeout(this.#debounce);
+    clearInterval(this.#interval);
+    this.#interval = undefined;
+    this.path = null;
+    this.content = "";
+    this.dirty = false;
+    this.loading = false;
+    this.docId++;
+    return this.#saving;
+  }
+
+  /**
+   * Save, then run `fn` with the editor read-only, so no edit or save can race it.
+   * For file operations that move or remove the current file.
+   */
+  async hold<T>(fn: () => Promise<T>): Promise<T> {
+    ++this.#openSeq; // cancel an in-flight open, which could land on a stale path
+    this.loading = true;
+    try {
+      await this.flush();
+      return await fn();
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  /** Follow a rename of the current file, or of a folder containing it. */
+  moved(from: string, to: string) {
+    if (this.path === from || this.path?.startsWith(from + "/")) {
+      this.path = to + this.path.slice(from.length);
     }
   }
 
