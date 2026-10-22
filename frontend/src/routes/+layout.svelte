@@ -3,35 +3,27 @@
   import * as Breadcrumb from "$lib/components/ui/breadcrumb/index.js";
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
   import { Separator } from "$lib/components/ui/separator/index.js";
-  import { Window } from "@wailsio/runtime";
   import AppSidebar from "$lib/components/app-sidebar.svelte";
+  import { windowState } from "$lib/stores/window.svelte.js";
   import { editor } from "$lib/stores/editor.svelte.js";
   let { children } = $props();
 
-  // In native macOS fullscreen the traffic lights are hidden and the window
-  // fills the whole screen, so no space needs to be reserved for them.
-  let fullscreen = $state(false);
-  async function checkFullscreen() {
-    try {
-      fullscreen = await Window.IsFullscreen();
-    } catch (err) {
-      console.error("Failed to read fullscreen state", err);
-    }
-  }
-  $effect(checkFullscreen);
+  $effect(() => {
+    windowState.refresh();
+  });
 </script>
 
-<svelte:window onresize={checkFullscreen} />
+<svelte:window onresize={() => windowState.refresh()} />
 
 <Sidebar.Provider>
   <AppSidebar />
   <Sidebar.Inset class="h-svh">
-    <!-- When the sidebar is collapsed the header reaches the window's left edge, so clear the macOS traffic lights. -->
+    <!-- When the sidebar is collapsed only the narrow icon rail is left of the header, so clear the rest of the macOS traffic lights. -->
     <header
       class={[
         "flex h-16 shrink-0 items-center gap-2 border-b px-4 transition-[padding]",
-        !fullscreen &&
-          "group-has-data-[state=collapsed]/sidebar-wrapper:ps-24",
+        !windowState.fullscreen &&
+          "group-has-data-[state=collapsed]/sidebar-wrapper:ps-12",
       ]}
     >
       <Sidebar.Trigger class="-ms-1" />

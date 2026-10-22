@@ -6,6 +6,7 @@
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
   import type { ComponentProps } from "svelte";
   import { onMount } from "svelte";
+  import { windowState } from "$lib/stores/window.svelte.js";
   import { editor } from "$lib/stores/editor.svelte.js";
   import { FileService } from "../../../bindings/changeme";
   import type { FileNode } from "../../../bindings/changeme/models.js";
@@ -166,7 +167,8 @@
     collapsible="none"
     class="!w-[calc(var(--sidebar-width-icon)_+_1px)] border-e"
   >
-    <Sidebar.Header>
+    <!-- Push the logo below the macOS traffic lights (hidden-inset title bar). -->
+    <Sidebar.Header class={windowState.fullscreen ? "" : "pt-12"}>
       <Sidebar.Menu>
         <Sidebar.MenuItem>
           <Sidebar.MenuButton size="lg" class="md:h-8 md:p-0">
@@ -229,7 +231,10 @@
   <!-- File explorer -->
   <Sidebar.Root collapsible="none"class="hidden flex-1 md:flex" bind:ref {...restProps}>
     <!-- Reserve space for the macOS traffic lights (hidden-inset title bar) and keep it draggable. -->
-    <Sidebar.Header class="h-12 shrink-0" style="--wails-draggable: drag" />
+    <Sidebar.Header
+      class={["shrink-0", windowState.fullscreen ? "h-4" : "h-12"]}
+      style="--wails-draggable: drag"
+    />
     <Sidebar.Content>
       <Sidebar.Group>
         <Sidebar.GroupLabel>Files</Sidebar.GroupLabel>
