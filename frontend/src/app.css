@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn-svelte/tailwind.css";
-@import "@fontsource-variable/inter";
+@import "@fontsource-variable/quicksand";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -38,7 +38,7 @@
   --sidebar-accent-foreground: oklch(0.6723 0.1606 244.9955);
   --sidebar-border: oklch(0.9271 0.0101 238.5177);
   --sidebar-ring: oklch(0.6818 0.1584 243.3540);
-  --font-sans: Open Sans, sans-serif;
+  --font-sans: 'Quicksand Variable', 'Quicksand', sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: Menlo, monospace;
   --radius: 1.3rem;
@@ -93,7 +93,7 @@
   --sidebar-accent-foreground: oklch(0.6692 0.1607 245.0110);
   --sidebar-border: oklch(0.3795 0.0220 240.5943);
   --sidebar-ring: oklch(0.6818 0.1584 243.3540);
-  --font-sans: Open Sans, sans-serif;
+  --font-sans: 'Quicksand Variable', 'Quicksand', sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: Menlo, monospace;
   --radius: 1.3rem;
@@ -171,7 +171,7 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans;
   }
 }
 /* Markdown editor: draw from the app's tokens so it follows the `.dark` class with the
@@ -194,4 +194,23 @@
 }
 .dark .sveltedown {
   color-scheme: dark;
+}
+
+/* Rounded tables. `border-radius` doesn't apply to collapsed borders, so the table draws
+   the outer border and the cells draw only the inner lines. */
+.sveltedown .cm-md-table table {
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--md-border);
+  border-radius: 0.50rem;
+  overflow: hidden;
+}
+.sveltedown .cm-md-table :is(th, td) {
+  border-width: 0 1px 1px 0;
+}
+.sveltedown .cm-md-table :is(th, td):last-child {
+  border-right-width: 0;
+}
+.sveltedown .cm-md-table table > :last-child > tr:last-child > * {
+  border-bottom-width: 0;
 }
