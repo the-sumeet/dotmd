@@ -11,6 +11,7 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
+    "@the-sumeet/sveltedown": "^1.0.0",
     "@wailsio/runtime": "latest"
   },
   "devDependencies": {
