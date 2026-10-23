@@ -7,6 +7,7 @@
   import PencilIcon from "@lucide/svelte/icons/pencil";
   import CopyIcon from "@lucide/svelte/icons/copy";
   import ClipboardIcon from "@lucide/svelte/icons/clipboard";
+  import FolderOpenIcon from "@lucide/svelte/icons/folder-open";
   import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import * as Collapsible from "$lib/components/ui/collapsible/index.js";
@@ -192,6 +193,16 @@
       toast.success("Copied path to clipboard");
     } catch (err) {
       toast.error("Couldn't copy path", { description: String(err) });
+    }
+  }
+
+  async function reveal(node: FileNode) {
+    try {
+      await FileService.Reveal(node.path);
+    } catch (err) {
+      toast.error("Couldn't open containing folder", {
+        description: String(err),
+      });
     }
   }
 
@@ -459,6 +470,10 @@
       Duplicate
     </ContextMenu.Item>
     <ContextMenu.Separator />
+    <ContextMenu.Item onSelect={() => void reveal(node)}>
+      <FolderOpenIcon />
+      Open Containing Folder
+    </ContextMenu.Item>
     <ContextMenu.Item onSelect={() => void copyPath(node, false)}>
       <ClipboardIcon />
       Copy Path

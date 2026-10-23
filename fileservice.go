@@ -7,7 +7,9 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -98,6 +100,36 @@ func (f *FileService) WriteFile(rel, content string) error {
 // AbsPath returns the absolute filesystem path of an entry in the data directory.
 func (f *FileService) AbsPath(rel string) (string, error) {
 	return f.resolve(rel)
+}
+
+// Reveal shows an entry of the data directory in the system file manager.
+func (f *FileService) Reveal(rel string) error {
+	abs, err := f.resolve(rel)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Lstat(abs); err != nil {
+		return err
+	}
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", "-R", abs)
+	case "windows":
+		// "/select," and the path must be separate arguments, or Go quotes them together
+		// when the path has a space and explorer ignores the selection.
+		cmd = exec.Command("explorer", "/select,", abs)
+	default:
+		// No portable way to highlight the entry, so open its parent folder.
+		cmd = exec.Command("xdg-open", filepath.Dir(abs))
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	// Reap the child so it doesn't linger as a zombie. Its exit status is ignored:
+	// explorer exits non-zero even on success.
+	go func() { _ = cmd.Wait() }()
+	return nil
 }
 
 // Rename moves a file or folder to a new path. It fails if the destination already exists.

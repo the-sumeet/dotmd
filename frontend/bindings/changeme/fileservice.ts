@@ -81,6 +81,13 @@ export function Rename($from: string, to: string): $CancellablePromise<void> {
 }
 
 /**
+ * Reveal shows an entry of the data directory in the system file manager.
+ */
+export function Reveal(rel: string): $CancellablePromise<void> {
+    return $Call.ByID(3385393838, rel);
+}
+
+/**
  * SaveImage writes data as a new "image-YYYYMMDD-HHMMSS<ext>" file inside the folder dir ("" is the
  * data directory) and returns its relative path. It never overwrites; a taken name gets " 2", " 3", ….
  */

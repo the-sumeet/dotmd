@@ -172,6 +172,15 @@ func TestCreateRejectsBadInput(t *testing.T) {
 	}
 }
 
+func TestRevealRejectsBadInput(t *testing.T) {
+	f := newTestService(t, "a.md")
+	for _, rel := range []string{"", ".", "..", "../outside", "missing.md"} {
+		if err := f.Reveal(rel); err == nil {
+			t.Errorf("Reveal(%q) succeeded, want error", rel)
+		}
+	}
+}
+
 func TestSaveImage(t *testing.T) {
 	f := newTestService(t)
 	if err := os.Mkdir(filepath.Join(f.dir, "sub"), 0o755); err != nil {
