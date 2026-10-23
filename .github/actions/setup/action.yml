@@ -1,0 +1,54 @@
+name: Setup
+description: Install Go, Node and the Wails CLI, and stamp the app version from the release tag.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
+    - uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: npm
+        cache-dependency-path: frontend/package-lock.json
+    - name: Install Wails CLI
+      shell: bash
+      run: go install github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION}
+    - name: Set app version
+      shell: bash
+      run: |
+        # A tag push stamps its version (v1.2.3 or v1.2.3-rc.1) into the build assets.
+        # Manual runs keep the version already in build/config.yml.
+        if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::Tag '$GITHUB_REF_NAME' must look like v1.2.3 or v1.2.3-rc.1"
+            exit 1
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          numeric="${BASH_REMATCH[1]}"
+
+          # macOS and Windows only accept numeric versions; the full version goes in
+          # the Linux packages and file names.
+          stamp() {
+            local file=$1 expr=$2
+            perl -0pi -e "$expr" "$file"
+            grep -q "$3" "$file" || { echo "::error::Could not stamp version into $file"; exit 1; }
+          }
+          stamp build/darwin/Info.plist \
+            "s|(<key>CFBundle(?:Short)?Version(?:String)?</key>\s*<string>)[^<]*|\${1}$numeric|g" \
+            "<string>$numeric</string>"
+          stamp build/windows/info.json \
+            "s/(\"(?:file_version|ProductVersion)\": \")[^\"]*/\${1}$numeric/g" \
+            "\"ProductVersion\": \"$numeric\""
+          stamp build/windows/nsis/wails_tools.nsh \
+            "s/(!define INFO_PRODUCTVERSION \")[^\"]*/\${1}$numeric/" \
+            "INFO_PRODUCTVERSION \"$numeric\""
+          stamp build/linux/nfpm/nfpm.yaml \
+            "s/^version: \"[^\"]*\"/version: \"$version\"/m" \
+            "^version: \"$version\""
+        else
+          version=$(sed -nE 's/^  version: "([^"]*)".*/\1/p' build/config.yml)
+        fi
+        echo "APP_VERSION=$version" >> "$GITHUB_ENV"
+        echo "Building dotmd $version"
