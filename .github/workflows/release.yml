@@ -34,12 +34,16 @@ jobs:
           if-no-files-found: error
 
   windows:
-    # Windows builds without CGO, so it cross-compiles cleanly from Linux.
+    # Windows builds without CGO, so the app itself cross-compiles from Linux.
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Install NSIS
-        run: sudo apt-get update && sudo apt-get install -y nsis
+      # The target is Windows, but the wails3 CLI and its binding generator still
+      # compile the Linux GTK code on this host, so they need the GTK headers.
+      - name: Install NSIS and GTK headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nsis pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
       - uses: ./.github/actions/setup
       - name: Build installers
         run: |
