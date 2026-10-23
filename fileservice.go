@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/adrg/xdg"
@@ -236,6 +238,103 @@ func (f *FileService) Duplicate(rel string) (string, error) {
 		return "", err
 	}
 	return filepath.ToSlash(out), nil
+}
+
+// imageExts are the file types SaveImage accepts.
+var imageExts = map[string]bool{".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true, ".svg": true}
+
+// maxImageBytes caps the size of a saved image.
+const maxImageBytes = 25 << 20
+
+// SaveImage writes data as a new "image-YYYYMMDD-HHMMSS<ext>" file inside the folder dir ("" is the
+// data directory) and returns its relative path. It never overwrites; a taken name gets " 2", " 3", ….
+func (f *FileService) SaveImage(dir, ext string, data []byte) (string, error) {
+	ext = strings.ToLower(ext)
+	if !imageExts[ext] {
+		return "", fmt.Errorf("unsupported image type %q", ext)
+	}
+	if len(data) > maxImageBytes {
+		return "", fmt.Errorf("image is too large (max %d MB)", maxImageBytes>>20)
+	}
+	parent := f.dir
+	if dir != "" {
+		var err error
+		if parent, err = f.resolve(dir); err != nil {
+			return "", err
+		}
+	}
+	if info, err := os.Stat(parent); err != nil {
+		return "", err
+	} else if !info.IsDir() {
+		return "", fmt.Errorf("%q is not a folder", dir)
+	}
+	stem := "image-" + time.Now().Format("20060102-150405")
+	var dst string
+	for i := 1; ; i++ {
+		suffix := ext
+		if i > 1 {
+			suffix = fmt.Sprintf(" %d%s", i, ext)
+		}
+		dst = filepath.Join(parent, stem+suffix)
+		out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		if err == nil {
+			_, err = out.Write(data)
+			if cerr := out.Close(); err == nil {
+				err = cerr
+			}
+			if err != nil {
+				os.Remove(dst)
+				return "", err
+			}
+			break
+		}
+		if !errors.Is(err, fs.ErrExist) {
+			return "", err
+		}
+	}
+	rel, err := filepath.Rel(f.dir, dst)
+	if err != nil {
+		return "", err
+	}
+	return filepath.ToSlash(rel), nil
+}
+
+// FilesPrefix is the URL path under which handler serves images from the data directory.
+const FilesPrefix = "/files/"
+
+// handler serves the images in the data directory read-only under FilesPrefix, so notes can show
+// the ones saved next to them. Hidden (dot-prefixed) entries, other file types, folders and
+// symlinks that leave the data directory are not served.
+func (f *FileService) handler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rel := strings.TrimPrefix(r.URL.Path, FilesPrefix)
+		for _, seg := range strings.Split(rel, "/") {
+			if strings.HasPrefix(seg, ".") {
+				http.NotFound(w, r)
+				return
+			}
+		}
+		if !imageExts[strings.ToLower(filepath.Ext(rel))] {
+			http.NotFound(w, r)
+			return
+		}
+		abs, err := f.resolve(rel)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		real, err := filepath.EvalSymlinks(abs)
+		root, rootErr := filepath.EvalSymlinks(f.dir)
+		info, statErr := os.Stat(real)
+		if err != nil || rootErr != nil || statErr != nil || !info.Mode().IsRegular() ||
+			!strings.HasPrefix(real, root+string(filepath.Separator)) {
+			http.NotFound(w, r)
+			return
+		}
+		// Without this the webview may keep showing a file that was deleted or replaced.
+		w.Header().Set("Cache-Control", "no-cache")
+		http.ServeFile(w, r, real)
+	})
 }
 
 // maxNameBytes is the longest file name most filesystems allow (NAME_MAX on macOS and Linux).

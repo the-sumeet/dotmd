@@ -3,6 +3,22 @@
  * Returns `null` for links that aren't notes: URLs with a scheme, `//host` links and `#anchors`.
  */
 export function resolveNoteLink(from: string, href: string): string | null {
+  const path = resolveRelative(from, href);
+  if (path === null) return null;
+  return path.split("/").pop()!.includes(".") ? path : path + ".md";
+}
+
+/**
+ * The URL the app serves the file `src` points to, for a note at `from`, so images next to a note can be shown.
+ * Returns `null` for remote sources (a scheme or `//host`) and anything that isn't a path.
+ */
+export function resolveAssetUrl(from: string, src: string): string | null {
+  const path = resolveRelative(from, src);
+  return path === null ? null : "/files/" + encodePath(path);
+}
+
+/** Resolves `href` against the note at `from`; `null` if it isn't a relative path to a file. */
+function resolveRelative(from: string, href: string): string | null {
   if (/^[a-z][a-z\d+.-]*:/i.test(href) || href.startsWith("//") || href.startsWith("#")) return null;
   // `..` can't climb above the URL root, so the result stays inside the data directory.
   let path: string;
@@ -11,9 +27,7 @@ export function resolveNoteLink(from: string, href: string): string | null {
   } catch {
     return null;
   }
-  if (path === "" || path.endsWith("/")) return null;
-  if (!path.split("/").pop()!.includes(".")) path += ".md";
-  return path;
+  return path === "" || path.endsWith("/") ? null : path;
 }
 
 /** Percent-encodes each segment of a path, so spaces, `#`, `%` and parentheses survive as a link destination. */

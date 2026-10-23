@@ -81,6 +81,14 @@ export function Rename($from: string, to: string): $CancellablePromise<void> {
 }
 
 /**
+ * SaveImage writes data as a new "image-YYYYMMDD-HHMMSS<ext>" file inside the folder dir ("" is the
+ * data directory) and returns its relative path. It never overwrites; a taken name gets " 2", " 3", ….
+ */
+export function SaveImage(dir: string, ext: string, data: string | null): $CancellablePromise<string> {
+    return $Call.ByID(3682205547, dir, ext, data);
+}
+
+/**
  * WriteFile atomically replaces the contents of a file in the data directory.
  */
 export function WriteFile(rel: string, content: string): $CancellablePromise<void> {

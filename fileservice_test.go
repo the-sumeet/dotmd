@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -167,5 +169,99 @@ func TestCreateRejectsBadInput(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(filepath.Dir(f.dir), "outside")); err == nil {
 		t.Error("created something outside the data directory")
+	}
+}
+
+func TestSaveImage(t *testing.T) {
+	f := newTestService(t)
+	if err := os.Mkdir(filepath.Join(f.dir, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	first, err := f.SaveImage("sub", ".PNG", []byte("one"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(first, "sub/image-") || !strings.HasSuffix(first, ".png") {
+		t.Errorf("SaveImage = %q, want sub/image-….png", first)
+	}
+	// Saving again in the same second must not overwrite.
+	second, err := f.SaveImage("sub", ".png", []byte("two"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second == first {
+		t.Fatalf("second save reused %q", first)
+	}
+	for path, want := range map[string]string{first: "one", second: "two"} {
+		got, err := os.ReadFile(filepath.Join(f.dir, filepath.FromSlash(path)))
+		if err != nil || string(got) != want {
+			t.Errorf("%q = %q (err %v), want %q", path, got, err, want)
+		}
+	}
+	root, err := f.SaveImage("", ".jpg", []byte("x"))
+	if err != nil || strings.Contains(root, "/") {
+		t.Errorf("SaveImage in the root = %q (err %v)", root, err)
+	}
+}
+
+func TestSaveImageRejectsHugeImage(t *testing.T) {
+	f := newTestService(t)
+	if got, err := f.SaveImage("", ".png", make([]byte, maxImageBytes+1)); err == nil {
+		t.Errorf("SaveImage = %q, want an error", got)
+	}
+}
+
+func TestSaveImageRejectsBadInput(t *testing.T) {
+	f := newTestService(t, "a.md")
+	for _, tc := range []struct{ dir, ext string }{
+		{"", ".exe"},
+		{"", ""},
+		{"..", ".png"},
+		{"../x", ".png"},
+		{"a.md", ".png"},
+		{"missing", ".png"},
+	} {
+		if got, err := f.SaveImage(tc.dir, tc.ext, []byte("x")); err == nil {
+			t.Errorf("SaveImage(%q, %q) = %q, want an error", tc.dir, tc.ext, got)
+		}
+	}
+}
+
+func TestHandler(t *testing.T) {
+	f := newTestService(t, "pic.png", "notes.md", ".secret")
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "out.png"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(f.dir, "link")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(f.dir, "dir.png"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(f.dir, ".hidden"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(f.dir, ".hidden", "a.png"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]int{
+		"/files/pic.png":       http.StatusOK,
+		"/files/.secret":       http.StatusNotFound,
+		"/files/.hidden/a.png": http.StatusNotFound,
+		"/files/nope.png":      http.StatusNotFound,
+		"/files/notes.md":      http.StatusNotFound, // not an image
+		"/files/":              http.StatusNotFound, // no folder listings
+		"/files/dir.png":       http.StatusNotFound,
+		"/files/link/out.png":  http.StatusNotFound, // symlink leaves the data directory
+	} {
+		rec := httptest.NewRecorder()
+		f.handler().ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
+		if rec.Code != want {
+			t.Errorf("GET %s = %d, want %d", path, rec.Code, want)
+		}
+		if want == http.StatusOK && rec.Header().Get("Cache-Control") != "no-cache" {
+			t.Errorf("GET %s: Cache-Control = %q, want no-cache", path, rec.Header().Get("Cache-Control"))
+		}
 	}
 }
