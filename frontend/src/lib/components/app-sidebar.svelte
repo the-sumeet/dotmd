@@ -251,6 +251,7 @@
   <Sidebar.Root
     collapsible="none"
     class="hidden min-w-0 flex-1 md:flex"
+    inert={!sidebar.open}
     bind:ref
     {...restProps}
   >

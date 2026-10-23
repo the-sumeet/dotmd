@@ -8,7 +8,15 @@
   import AppSidebar from "$lib/components/app-sidebar.svelte";
   import { windowState } from "$lib/stores/window.svelte.js";
   import { editor } from "$lib/stores/editor.svelte.js";
+  import { page } from "$app/state";
   let { children } = $props();
+
+  // Routes that show the file explorer; every other route gets just the icon rail.
+  const EXPLORER_ROUTES = ["/"];
+  const showExplorer = $derived(EXPLORER_ROUTES.includes(page.route.id ?? ""));
+
+  // The user's own expanded/collapsed choice, kept while the explorer is hidden.
+  let sidebarOpen = $state(true);
 
   $effect(() => {
     windowState.refresh();
@@ -21,7 +29,11 @@
 <Toaster position="bottom-right" />
 
 <!-- Wider than the 16rem default so the file explorer (next to the icon rail) has room for names. -->
-<Sidebar.Provider style="--sidebar-width: 20rem;">
+<!-- Off explorer routes the sidebar is forced to its collapsed icon rail without touching the stored choice. -->
+<Sidebar.Provider
+  bind:open={() => showExplorer && sidebarOpen, (v) => (sidebarOpen = v)}
+  style="--sidebar-width: 20rem;"
+>
   <AppSidebar />
   <Sidebar.Inset class="h-svh">
     <!-- When the sidebar is collapsed only the narrow icon rail is left of the header, so clear the rest of the macOS traffic lights. -->
@@ -32,10 +44,14 @@
           "group-has-data-[state=collapsed]/sidebar-wrapper:ps-12",
       ]}
     >
-      <Sidebar.Trigger class="-ms-1" />
+      <!-- Nothing to toggle without the explorer, except on mobile where the trigger opens the rail sheet. -->
+      <Sidebar.Trigger class={["-ms-1", !showExplorer && "md:hidden"]} />
       <Separator
         orientation="vertical"
-        class="me-2 data-vertical:h-4 data-vertical:self-auto"
+        class={[
+          "me-2 data-vertical:h-4 data-vertical:self-auto",
+          !showExplorer && "md:hidden",
+        ]}
       />
       {#if editor.path}
         {@const segments = editor.path.split("/")}
