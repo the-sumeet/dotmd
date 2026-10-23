@@ -1,4 +1,5 @@
 import { SvelteSet } from "svelte/reactivity";
+import { toast } from "svelte-sonner";
 import { FileService } from "../../../bindings/changeme";
 import type { FileNode } from "../../../bindings/changeme/models.js";
 import { editor } from "./editor.svelte.js";
@@ -64,6 +65,29 @@ class FilesStore {
       this.expanded.add(to + path.slice(from.length));
     }
     await this.refresh();
+  }
+
+  /** Creates an empty note in the folder `dir` ("" for the root), opens it and returns its path. */
+  async createFile(dir: string, name: string): Promise<string> {
+    const path = await FileService.CreateFile(dir, name);
+    if (dir !== "") this.expanded.add(dir);
+    await this.refresh();
+    // The file exists now, so a failure to open it must not read as a failure to create it.
+    try {
+      await editor.open(path);
+    } catch (err) {
+      console.error("Failed to open new file", path, err);
+      toast.error("Created the file but couldn't open it", { description: path });
+    }
+    return path;
+  }
+
+  /** Creates an empty folder in the folder `dir` ("" for the root) and returns its path. */
+  async createFolder(dir: string, name: string): Promise<string> {
+    const path = await FileService.CreateFolder(dir, name);
+    if (dir !== "") this.expanded.add(dir);
+    await this.refresh();
+    return path;
   }
 
   /** Copies the entry at `path` next to itself and returns the copy's path. */

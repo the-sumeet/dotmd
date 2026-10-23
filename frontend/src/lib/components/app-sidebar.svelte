@@ -2,6 +2,8 @@
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
   import FileIcon from "@lucide/svelte/icons/file";
   import FolderIcon from "@lucide/svelte/icons/folder";
+  import FilePlusIcon from "@lucide/svelte/icons/file-plus";
+  import FolderPlusIcon from "@lucide/svelte/icons/folder-plus";
   import PencilIcon from "@lucide/svelte/icons/pencil";
   import CopyIcon from "@lucide/svelte/icons/copy";
   import ClipboardIcon from "@lucide/svelte/icons/clipboard";
@@ -93,19 +95,60 @@
     deleteOpen = true;
   }
 
+  /** Why `name` can't be used for a file or folder, or null if it can. */
+  function nameProblem(name: string): string | null {
+    return name === ""
+      ? "Name can't be empty."
+      : /[/\\]/.test(name)
+        ? "Name can't contain / or \\."
+        : name.startsWith(".")
+          ? "Names starting with . are hidden from the file list."
+          : new TextEncoder().encode(name).length > 255
+            ? "Name is too long (max 255 bytes)."
+            : null;
+  }
+
+  // New file / folder dialog, opened from the header buttons or a folder's context menu.
+  let createOpen = $state(false);
+  let createDir = $state("");
+  let createKind = $state<"file" | "folder">("file");
+  let createName = $state("");
+  let createInput = $state<HTMLInputElement | null>(null);
+  let creating = false;
+
+  function startCreate(dir: string, kind: "file" | "folder") {
+    createDir = dir;
+    createKind = kind;
+    createName = "";
+    createOpen = true;
+  }
+
+  async function submitCreate() {
+    if (creating) return;
+    const name = createName.trim();
+    const problem = nameProblem(name);
+    if (problem) {
+      toast.error("Invalid name", { description: problem });
+      return;
+    }
+    creating = true;
+    try {
+      if (createKind === "file") await files.createFile(createDir, name);
+      else await files.createFolder(createDir, name);
+      createOpen = false;
+    } catch (err) {
+      toast.error(`Couldn't create ${createKind}`, {
+        description: String(err),
+      });
+    } finally {
+      creating = false;
+    }
+  }
+
   async function submitRename() {
     if (!target) return;
     const name = newName.trim();
-    const problem =
-      name === ""
-        ? "Name can't be empty."
-        : /[/\\]/.test(name)
-          ? "Name can't contain / or \\."
-          : name.startsWith(".")
-            ? "Names starting with . are hidden from the file list."
-            : new TextEncoder().encode(name).length > 255
-              ? "Name is too long (max 255 bytes)."
-              : null;
+    const problem = nameProblem(name);
     if (problem) {
       toast.error("Invalid name", { description: problem });
       return;
@@ -263,6 +306,21 @@
     <Sidebar.Content>
       <Sidebar.Group>
         <Sidebar.GroupLabel>Files</Sidebar.GroupLabel>
+        <Sidebar.GroupAction
+          class="right-9"
+          title="New file"
+          aria-label="New file"
+          onclick={() => startCreate("", "file")}
+        >
+          <FilePlusIcon />
+        </Sidebar.GroupAction>
+        <Sidebar.GroupAction
+          title="New folder"
+          aria-label="New folder"
+          onclick={() => startCreate("", "folder")}
+        >
+          <FolderPlusIcon />
+        </Sidebar.GroupAction>
         <Sidebar.GroupContent>
           <Sidebar.Menu>
             {#each files.tree as node (node.path)}
@@ -275,6 +333,47 @@
     <Sidebar.Rail />
   </Sidebar.Root>
 </Sidebar.Root>
+
+<Dialog.Root bind:open={createOpen}>
+  <Dialog.Content
+    class="sm:max-w-sm"
+    onOpenAutoFocus={(e) => {
+      e.preventDefault();
+      createInput?.focus();
+    }}
+  >
+    <form
+      class="grid gap-4"
+      onsubmit={(e) => {
+        e.preventDefault();
+        void submitCreate();
+      }}
+    >
+      <Dialog.Header>
+        <Dialog.Title>New {createKind}</Dialog.Title>
+        {#if createDir !== ""}
+          <Dialog.Description class="wrap-anywhere"
+            >in {createDir}</Dialog.Description
+          >
+        {/if}
+      </Dialog.Header>
+      <Input
+        bind:ref={createInput}
+        bind:value={createName}
+        placeholder={createKind === "file" ? "Untitled.md" : "Untitled"}
+        aria-label="Name"
+      />
+      <Dialog.Footer>
+        <Button
+          type="button"
+          variant="outline"
+          onclick={() => (createOpen = false)}>Cancel</Button
+        >
+        <Button type="submit">Create</Button>
+      </Dialog.Footer>
+    </form>
+  </Dialog.Content>
+</Dialog.Root>
 
 <Dialog.Root bind:open={renameOpen}>
   <Dialog.Content
@@ -340,6 +439,17 @@
 
 {#snippet ItemMenu(node: FileNode)}
   <ContextMenu.Content class="w-56">
+    {#if node.isDir}
+      <ContextMenu.Item onSelect={() => startCreate(node.path, "file")}>
+        <FilePlusIcon />
+        New File
+      </ContextMenu.Item>
+      <ContextMenu.Item onSelect={() => startCreate(node.path, "folder")}>
+        <FolderPlusIcon />
+        New Folder
+      </ContextMenu.Item>
+      <ContextMenu.Separator />
+    {/if}
     <ContextMenu.Item onSelect={() => startRename(node)}>
       <PencilIcon />
       Rename

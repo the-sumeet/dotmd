@@ -131,6 +131,64 @@ func (f *FileService) Delete(rel string) error {
 	return os.RemoveAll(abs)
 }
 
+// CreateFile creates an empty file called name inside the folder dir ("" is the data directory)
+// and returns its relative path. A name without an extension gets ".md". It never overwrites.
+func (f *FileService) CreateFile(dir, name string) (string, error) {
+	return f.create(dir, name, false)
+}
+
+// CreateFolder creates an empty folder called name inside the folder dir ("" is the data directory)
+// and returns its relative path. It never overwrites.
+func (f *FileService) CreateFolder(dir, name string) (string, error) {
+	return f.create(dir, name, true)
+}
+
+func (f *FileService) create(dir, name string, isDir bool) (string, error) {
+	name = strings.TrimSpace(name)
+	switch {
+	case name == "":
+		return "", errors.New("name can't be empty")
+	case strings.ContainsAny(name, `/\`):
+		return "", errors.New(`name can't contain / or \`)
+	case strings.HasPrefix(name, "."):
+		return "", errors.New("names starting with . are hidden from the file list")
+	}
+	if !isDir && filepath.Ext(name) == "" {
+		name += ".md"
+	}
+	if len(name) > maxNameBytes {
+		return "", fmt.Errorf("name is too long (max %d bytes)", maxNameBytes)
+	}
+	parent := f.dir
+	if dir != "" {
+		var err error
+		if parent, err = f.resolve(dir); err != nil {
+			return "", err
+		}
+	}
+	if info, err := os.Stat(parent); err != nil {
+		return "", err
+	} else if !info.IsDir() {
+		return "", fmt.Errorf("%q is not a folder", dir)
+	}
+	abs := filepath.Join(parent, name)
+	perm := os.FileMode(0o644)
+	if isDir {
+		perm = 0o755
+	}
+	if err := claim(abs, isDir, perm); err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return "", fmt.Errorf("%q already exists", name)
+		}
+		return "", err
+	}
+	out, err := filepath.Rel(f.dir, abs)
+	if err != nil {
+		return "", err
+	}
+	return filepath.ToSlash(out), nil
+}
+
 // Duplicate copies a file or folder next to itself as "name copy.ext" (or "name copy 2.ext", …)
 // and returns the new relative path.
 func (f *FileService) Duplicate(rel string) (string, error) {
@@ -156,7 +214,7 @@ func (f *FileService) Duplicate(rel string) (string, error) {
 			suffix = fmt.Sprintf(" copy %d%s", i, ext)
 		}
 		dst = filepath.Join(dir, fitName(stem, suffix)+suffix)
-		err = claim(dst, info)
+		err = claim(dst, info.IsDir(), info.Mode().Perm())
 		if err == nil {
 			break
 		}
@@ -196,11 +254,11 @@ func fitName(stem, suffix string) string {
 }
 
 // claim creates an empty file or folder at path, failing with fs.ErrExist if anything is already there.
-func claim(path string, like os.FileInfo) error {
-	if like.IsDir() {
-		return os.Mkdir(path, like.Mode().Perm())
+func claim(path string, isDir bool, perm os.FileMode) error {
+	if isDir {
+		return os.Mkdir(path, perm)
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, like.Mode().Perm())
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
 	if err != nil {
 		return err
 	}

@@ -22,6 +22,22 @@ export function AbsPath(rel: string): $CancellablePromise<string> {
 }
 
 /**
+ * CreateFile creates an empty file called name inside the folder dir ("" is the data directory)
+ * and returns its relative path. A name without an extension gets ".md". It never overwrites.
+ */
+export function CreateFile(dir: string, name: string): $CancellablePromise<string> {
+    return $Call.ByID(3338955221, dir, name);
+}
+
+/**
+ * CreateFolder creates an empty folder called name inside the folder dir ("" is the data directory)
+ * and returns its relative path. It never overwrites.
+ */
+export function CreateFolder(dir: string, name: string): $CancellablePromise<string> {
+    return $Call.ByID(1509865311, dir, name);
+}
+
+/**
  * DataDir returns the absolute path of the data directory.
  */
 export function DataDir(): $CancellablePromise<string> {
