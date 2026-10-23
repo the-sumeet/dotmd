@@ -1,9 +1,14 @@
 <script lang="ts">
-  import { MarkdownEditor } from "@the-sumeet/sveltedown";
+  import { MarkdownEditor, type ImageSnippetProps } from "@the-sumeet/sveltedown";
   import { editor } from "$lib/stores/editor.svelte.js";
   import { files } from "$lib/stores/files.svelte.js";
   import { resolveNoteLink } from "$lib/note-links.js";
+  import { pasteImage } from "$lib/paste-image.js";
+  import NoteImage from "$lib/components/note-image.svelte";
   import { toast } from "svelte-sonner";
+
+  // A stable reference, as the editor reconfigures whenever it changes.
+  const extensions = [pasteImage];
 
   /** Opens relative links as notes; anything else (http, mailto, …) opens as usual. */
   function onlinkclick(url: string) {
@@ -30,6 +35,10 @@
   onblur={() => void editor.flush()}
 />
 
+{#snippet imageSnippet(props: ImageSnippetProps)}
+  <NoteImage {...props} />
+{/snippet}
+
 {#if editor.path === null}
   <p class="text-muted-foreground m-auto text-sm">Select a file to start editing.</p>
 {:else}
@@ -41,6 +50,8 @@
       class="editor min-h-0 flex-1"
       placeholder="Start writing…"
       {onlinkclick}
+      {extensions}
+      {imageSnippet}
     />
   {/key}
 {/if}

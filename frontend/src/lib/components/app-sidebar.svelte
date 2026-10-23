@@ -2,6 +2,8 @@
   import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
   import FileIcon from "@lucide/svelte/icons/file";
   import FolderIcon from "@lucide/svelte/icons/folder";
+  import FilePlusIcon from "@lucide/svelte/icons/file-plus";
+  import FolderPlusIcon from "@lucide/svelte/icons/folder-plus";
   import PencilIcon from "@lucide/svelte/icons/pencil";
   import CopyIcon from "@lucide/svelte/icons/copy";
   import ClipboardIcon from "@lucide/svelte/icons/clipboard";
@@ -12,6 +14,11 @@
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
+  import SunIcon from "@lucide/svelte/icons/sun";
+  import MoonIcon from "@lucide/svelte/icons/moon";
+  import { toggleMode } from "mode-watcher";
+  import { goto } from "$app/navigation";
+  import { page } from "$app/state";
   import { mergeProps } from "bits-ui";
   import type { ComponentProps } from "svelte";
   import { onMount, tick, untrack } from "svelte";
@@ -24,12 +31,11 @@
   import { FileService } from "../../../bindings/changeme";
   import type { FileNode } from "../../../bindings/changeme/models.js";
   import CommandIcon from "@lucide/svelte/icons/command";
-  import ArchiveXIcon from "@lucide/svelte/icons/archive-x";
-  import InboxIcon from "@lucide/svelte/icons/inbox";
-  import SendIcon from "@lucide/svelte/icons/send";
+  import SettingsIcon from "@lucide/svelte/icons/settings";
+  import NotebookTextIcon from "@lucide/svelte/icons/notebook-text";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import { useSidebar } from "$lib/components/ui/sidebar/context.svelte.js";
-  import NavUser from"./nav-user.svelte";
+  import NavUser from "./nav-user.svelte";
   let {
     ref = $bindable(null),
     ...restProps
@@ -43,116 +49,15 @@
     },
     navMain: [
       {
-        title: "Inbox",
-        url: "#",
-        icon: InboxIcon,
-        isActive: true,
+        title: "Notes",
+        url: "/",
+        icon: NotebookTextIcon,
+        openSidebar: true,
       },
       {
-        title: "Drafts",
-        url: "#",
-        icon: FileIcon,
-        isActive: false,
-      },
-      {
-        title: "Sent",
-        url: "#",
-        icon: SendIcon,
-        isActive: false,
-      },
-      {
-        title: "Junk",
-        url: "#",
-        icon: ArchiveXIcon,
-        isActive: false,
-      },
-      {
-        title: "Trash",
-        url: "#",
-        icon: Trash2Icon,
-        isActive: false,
-      },
-    ],
-    mails: [
-      {
-        name: "William Smith",
-        email: "williamsmith@example.com",
-        subject: "Meeting Tomorrow",
-        date: "09:34 AM",
-        teaser:
-          "Hi team, just a reminder about our meeting tomorrow at 10 AM.\nPlease come prepared with your project updates.",
-      },
-      {
-        name: "Alice Smith",
-        email: "alicesmith@example.com",
-        subject: "Re: Project Update",
-        date: "Yesterday",
-        teaser:
-          "Thanks for the update. The progress looks great so far.\nLet's schedule a call to discuss the next steps.",
-      },
-      {
-        name: "Bob Johnson",
-        email: "bobjohnson@example.com",
-        subject: "Weekend Plans",
-        date: "2 days ago",
-        teaser:
-          "Hey everyone! I'm thinking of organizing a team outing this weekend.\nWould you be interested in a hiking trip or a beach day?",
-      },
-      {
-        name: "Emily Davis",
-        email: "emilydavis@example.com",
-        subject: "Re: Question about Budget",
-        date: "2 days ago",
-        teaser:
-          "I've reviewed the budget numbers you sent over.\nCan we set up a quick call to discuss some potential adjustments?",
-      },
-      {
-        name: "Michael Wilson",
-        email: "michaelwilson@example.com",
-        subject: "Important Announcement",
-        date: "1 week ago",
-        teaser:
-          "Please join us for an all-hands meeting this Friday at 3 PM.\nWe have some exciting news to share about the company's future.",
-      },
-      {
-        name: "Sarah Brown",
-        email: "sarahbrown@example.com",
-        subject: "Re: Feedback on Proposal",
-        date: "1 week ago",
-        teaser:
-          "Thank you for sending over the proposal. I've reviewed it and have some thoughts.\nCould we schedule a meeting to discuss my feedback in detail?",
-      },
-      {
-        name: "David Lee",
-        email: "davidlee@example.com",
-        subject: "New Project Idea",
-        date: "1 week ago",
-        teaser:
-          "I've been brainstorming and came up with an interesting project concept.\nDo you have time this week to discuss its potential impact and feasibility?",
-      },
-      {
-        name: "Olivia Wilson",
-        email: "oliviawilson@example.com",
-        subject: "Vacation Plans",
-        date: "1 week ago",
-        teaser:
-          "Just a heads up that I'll be taking a two-week vacation next month.\nI'll make sure all my projects are up to date before I leave.",
-      },
-      {
-        name: "James Martin",
-        email: "jamesmartin@example.com",
-        subject: "Re: Conference Registration",
-        date: "1 week ago",
-        teaser:
-          "I've completed the registration for the upcoming tech conference.\nLet me know if you need any additional information from my end.",
-      },
-      {
-        name: "Sophia White",
-        email: "sophiawhite@example.com",
-        subject: "Team Dinner",
-        date: "1 week ago",
-        teaser:
-          "To celebrate our recent project success, I'd like to organize a team dinner.\nAre you available next Friday evening? Please let me know your preferences.",
+        title: "Settings",
+        url: "/settings",
+        icon: SettingsIcon,
       },
     ],
   };
@@ -190,19 +95,60 @@
     deleteOpen = true;
   }
 
+  /** Why `name` can't be used for a file or folder, or null if it can. */
+  function nameProblem(name: string): string | null {
+    return name === ""
+      ? "Name can't be empty."
+      : /[/\\]/.test(name)
+        ? "Name can't contain / or \\."
+        : name.startsWith(".")
+          ? "Names starting with . are hidden from the file list."
+          : new TextEncoder().encode(name).length > 255
+            ? "Name is too long (max 255 bytes)."
+            : null;
+  }
+
+  // New file / folder dialog, opened from the header buttons or a folder's context menu.
+  let createOpen = $state(false);
+  let createDir = $state("");
+  let createKind = $state<"file" | "folder">("file");
+  let createName = $state("");
+  let createInput = $state<HTMLInputElement | null>(null);
+  let creating = false;
+
+  function startCreate(dir: string, kind: "file" | "folder") {
+    createDir = dir;
+    createKind = kind;
+    createName = "";
+    createOpen = true;
+  }
+
+  async function submitCreate() {
+    if (creating) return;
+    const name = createName.trim();
+    const problem = nameProblem(name);
+    if (problem) {
+      toast.error("Invalid name", { description: problem });
+      return;
+    }
+    creating = true;
+    try {
+      if (createKind === "file") await files.createFile(createDir, name);
+      else await files.createFolder(createDir, name);
+      createOpen = false;
+    } catch (err) {
+      toast.error(`Couldn't create ${createKind}`, {
+        description: String(err),
+      });
+    } finally {
+      creating = false;
+    }
+  }
+
   async function submitRename() {
     if (!target) return;
     const name = newName.trim();
-    const problem =
-      name === ""
-        ? "Name can't be empty."
-        : /[/\\]/.test(name)
-          ? "Name can't contain / or \\."
-          : name.startsWith(".")
-            ? "Names starting with . are hidden from the file list."
-            : new TextEncoder().encode(name).length > 255
-              ? "Name is too long (max 255 bytes)."
-              : null;
+    const problem = nameProblem(name);
     if (problem) {
       toast.error("Invalid name", { description: problem });
       return;
@@ -249,8 +195,13 @@
     }
   }
 
-  let activeItem = $state(data.navMain[0]);
-  let mails = $state(data.mails);
+  function isActive(url: string) {
+    const current = page.url.pathname;
+    return url === "/"
+      ? current === "/"
+      : current === url || current.startsWith(url + "/");
+  }
+
   const sidebar = useSidebar();
 </script>
 
@@ -297,15 +248,12 @@
                     hidden: false,
                   }}
                   onclick={() => {
-                    activeItem = item;
-                    const mail = data.mails.sort(() => Math.random() - 0.5);
-                    mails = mail.slice(
-                      0,
-                      Math.max(5, Math.floor(Math.random() * 10) + 1),
-                    );
-                    sidebar.setOpen(true);
+                    void goto(item.url);
+                    if (item.openSidebar) {
+                      sidebar.setOpen(true);
+                    }
                   }}
-                  isActive={activeItem.title === item.title}
+                  isActive={isActive(item.url)}
                   class="px-2.5 md:px-2"
                 >
                   {#snippet tooltipContent()}
@@ -321,13 +269,35 @@
       </Sidebar.Group>
     </Sidebar.Content>
     <Sidebar.Footer>
+      <Sidebar.Menu>
+        <Sidebar.MenuItem>
+          <Sidebar.MenuButton
+            tooltipContentProps={{ hidden: false }}
+            onclick={toggleMode}
+            class="px-2.5 md:px-2"
+          >
+            {#snippet tooltipContent()}
+              Toggle theme
+            {/snippet}
+            <SunIcon class="dark:hidden" />
+            <MoonIcon class="hidden dark:block" />
+            <span>Toggle theme</span>
+          </Sidebar.MenuButton>
+        </Sidebar.MenuItem>
+      </Sidebar.Menu>
       <NavUser user={data.user} />
     </Sidebar.Footer>
   </Sidebar.Root>
 
   <!-- File explorer -->
   <!-- min-w-0 so the panel can't grow past the sidebar to fit a long name, and the name truncates instead. -->
-  <Sidebar.Root collapsible="none" class="hidden min-w-0 flex-1 md:flex" bind:ref {...restProps}>
+  <Sidebar.Root
+    collapsible="none"
+    class="hidden min-w-0 flex-1 md:flex"
+    inert={!sidebar.open}
+    bind:ref
+    {...restProps}
+  >
     <!-- Reserve space for the macOS traffic lights (hidden-inset title bar) and keep it draggable. -->
     <Sidebar.Header
       class={["shrink-0", windowState.fullscreen ? "h-4" : "h-12"]}
@@ -336,6 +306,21 @@
     <Sidebar.Content>
       <Sidebar.Group>
         <Sidebar.GroupLabel>Files</Sidebar.GroupLabel>
+        <Sidebar.GroupAction
+          class="right-9"
+          title="New file"
+          aria-label="New file"
+          onclick={() => startCreate("", "file")}
+        >
+          <FilePlusIcon />
+        </Sidebar.GroupAction>
+        <Sidebar.GroupAction
+          title="New folder"
+          aria-label="New folder"
+          onclick={() => startCreate("", "folder")}
+        >
+          <FolderPlusIcon />
+        </Sidebar.GroupAction>
         <Sidebar.GroupContent>
           <Sidebar.Menu>
             {#each files.tree as node (node.path)}
@@ -348,6 +333,47 @@
     <Sidebar.Rail />
   </Sidebar.Root>
 </Sidebar.Root>
+
+<Dialog.Root bind:open={createOpen}>
+  <Dialog.Content
+    class="sm:max-w-sm"
+    onOpenAutoFocus={(e) => {
+      e.preventDefault();
+      createInput?.focus();
+    }}
+  >
+    <form
+      class="grid gap-4"
+      onsubmit={(e) => {
+        e.preventDefault();
+        void submitCreate();
+      }}
+    >
+      <Dialog.Header>
+        <Dialog.Title>New {createKind}</Dialog.Title>
+        {#if createDir !== ""}
+          <Dialog.Description class="wrap-anywhere"
+            >in {createDir}</Dialog.Description
+          >
+        {/if}
+      </Dialog.Header>
+      <Input
+        bind:ref={createInput}
+        bind:value={createName}
+        placeholder={createKind === "file" ? "Untitled.md" : "Untitled"}
+        aria-label="Name"
+      />
+      <Dialog.Footer>
+        <Button
+          type="button"
+          variant="outline"
+          onclick={() => (createOpen = false)}>Cancel</Button
+        >
+        <Button type="submit">Create</Button>
+      </Dialog.Footer>
+    </form>
+  </Dialog.Content>
+</Dialog.Root>
 
 <Dialog.Root bind:open={renameOpen}>
   <Dialog.Content
@@ -370,9 +396,17 @@
       <Dialog.Header>
         <Dialog.Title>Rename {target?.isDir ? "folder" : "file"}</Dialog.Title>
       </Dialog.Header>
-      <Input bind:ref={renameInput} bind:value={newName} aria-label="New name" />
+      <Input
+        bind:ref={renameInput}
+        bind:value={newName}
+        aria-label="New name"
+      />
       <Dialog.Footer>
-        <Button type="button" variant="outline" onclick={() => (renameOpen = false)}>Cancel</Button>
+        <Button
+          type="button"
+          variant="outline"
+          onclick={() => (renameOpen = false)}>Cancel</Button
+        >
         <Button type="submit">Rename</Button>
       </Dialog.Footer>
     </form>
@@ -382,7 +416,9 @@
 <AlertDialog.Root bind:open={deleteOpen}>
   <AlertDialog.Content>
     <AlertDialog.Header>
-      <AlertDialog.Title class="wrap-anywhere">Delete {target?.name}?</AlertDialog.Title>
+      <AlertDialog.Title class="wrap-anywhere"
+        >Delete {target?.name}?</AlertDialog.Title
+      >
       <AlertDialog.Description>
         {target?.isDir
           ? "This permanently deletes the folder and everything in it."
@@ -391,7 +427,10 @@
     </AlertDialog.Header>
     <AlertDialog.Footer>
       <AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
-      <AlertDialog.Action variant="destructive" onclick={() => void confirmDelete()}>
+      <AlertDialog.Action
+        variant="destructive"
+        onclick={() => void confirmDelete()}
+      >
         Delete
       </AlertDialog.Action>
     </AlertDialog.Footer>
@@ -400,6 +439,17 @@
 
 {#snippet ItemMenu(node: FileNode)}
   <ContextMenu.Content class="w-56">
+    {#if node.isDir}
+      <ContextMenu.Item onSelect={() => startCreate(node.path, "file")}>
+        <FilePlusIcon />
+        New File
+      </ContextMenu.Item>
+      <ContextMenu.Item onSelect={() => startCreate(node.path, "folder")}>
+        <FolderPlusIcon />
+        New Folder
+      </ContextMenu.Item>
+      <ContextMenu.Separator />
+    {/if}
     <ContextMenu.Item onSelect={() => startRename(node)}>
       <PencilIcon />
       Rename
@@ -413,7 +463,10 @@
       <ClipboardIcon />
       Copy Path
     </ContextMenu.Item>
-    <ContextMenu.Item disabled={editor.path === null} onSelect={() => void copyPath(node, true)}>
+    <ContextMenu.Item
+      disabled={editor.path === null}
+      onSelect={() => void copyPath(node, true)}
+    >
       <ClipboardIcon />
       Copy Path from Open Note
     </ContextMenu.Item>

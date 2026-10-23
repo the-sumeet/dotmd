@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -79,5 +81,187 @@ func TestDuplicateLongFolderName(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(f.dir, got, "n.md")); err != nil {
 		t.Error(err)
+	}
+}
+
+func TestCreateFile(t *testing.T) {
+	f := newTestService(t)
+	if err := os.Mkdir(filepath.Join(f.dir, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ dir, name, want string }{
+		{"", "a", "a.md"},
+		{"", "b.txt", "b.txt"},
+		{"sub", "c", "sub/c.md"},
+	} {
+		got, err := f.CreateFile(tc.dir, tc.name)
+		if err != nil {
+			t.Fatalf("CreateFile(%q, %q): %v", tc.dir, tc.name, err)
+		}
+		if got != tc.want {
+			t.Errorf("CreateFile(%q, %q) = %q, want %q", tc.dir, tc.name, got, tc.want)
+		}
+		info, err := os.Stat(filepath.Join(f.dir, filepath.FromSlash(got)))
+		if err != nil || info.IsDir() {
+			t.Fatalf("%q should be a file (err %v)", got, err)
+		}
+		if info.Mode().Perm()&0o111 != 0 {
+			t.Errorf("%q is executable (%v)", got, info.Mode().Perm())
+		}
+	}
+}
+
+func TestCreateTrimsName(t *testing.T) {
+	f := newTestService(t)
+	got, err := f.CreateFile("", "  a  ")
+	if err != nil || got != "a.md" {
+		t.Errorf("CreateFile = %q, %v, want a.md", got, err)
+	}
+}
+
+func TestCreateFolder(t *testing.T) {
+	f := newTestService(t)
+	got, err := f.CreateFolder("", "notes")
+	if err != nil || got != "notes" {
+		t.Fatalf("CreateFolder = %q, %v", got, err)
+	}
+	got, err = f.CreateFolder("notes", "2024")
+	if err != nil || got != "notes/2024" {
+		t.Fatalf("CreateFolder = %q, %v", got, err)
+	}
+	if info, err := os.Stat(filepath.Join(f.dir, "notes", "2024")); err != nil || !info.IsDir() {
+		t.Errorf("notes/2024 should be a folder (err %v)", err)
+	}
+}
+
+func TestCreateKeepsExisting(t *testing.T) {
+	f := newTestService(t, "a.md")
+	if _, err := f.CreateFile("", "a"); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Errorf("CreateFile over existing file: err = %v, want already exists", err)
+	}
+	if data, _ := os.ReadFile(filepath.Join(f.dir, "a.md")); string(data) != "x" {
+		t.Errorf("existing file was modified: %q", data)
+	}
+	if _, err := f.CreateFolder("", "a.md"); err == nil {
+		t.Error("CreateFolder over existing file: want error")
+	}
+}
+
+func TestCreateRejectsBadInput(t *testing.T) {
+	f := newTestService(t, "file.md")
+	long := strings.Repeat("a", maxNameBytes) // ".md" is added, so this ends up too long
+	for _, tc := range []struct{ dir, name string }{
+		{"", ""},
+		{"", "  "},
+		{"", "a/b"},
+		{"", `a\b`},
+		{"", ".hidden"},
+		{"", ".."},
+		{"", long},
+		{"missing", "a"},
+		{"file.md", "a"},
+		{"..", "a"},
+		{"../outside", "a"},
+	} {
+		if got, err := f.CreateFile(tc.dir, tc.name); err == nil {
+			t.Errorf("CreateFile(%q, %q) = %q, want error", tc.dir, tc.name, got)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(f.dir), "outside")); err == nil {
+		t.Error("created something outside the data directory")
+	}
+}
+
+func TestSaveImage(t *testing.T) {
+	f := newTestService(t)
+	if err := os.Mkdir(filepath.Join(f.dir, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	first, err := f.SaveImage("sub", ".PNG", []byte("one"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(first, "sub/image-") || !strings.HasSuffix(first, ".png") {
+		t.Errorf("SaveImage = %q, want sub/image-….png", first)
+	}
+	// Saving again in the same second must not overwrite.
+	second, err := f.SaveImage("sub", ".png", []byte("two"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second == first {
+		t.Fatalf("second save reused %q", first)
+	}
+	for path, want := range map[string]string{first: "one", second: "two"} {
+		got, err := os.ReadFile(filepath.Join(f.dir, filepath.FromSlash(path)))
+		if err != nil || string(got) != want {
+			t.Errorf("%q = %q (err %v), want %q", path, got, err, want)
+		}
+	}
+	root, err := f.SaveImage("", ".jpg", []byte("x"))
+	if err != nil || strings.Contains(root, "/") {
+		t.Errorf("SaveImage in the root = %q (err %v)", root, err)
+	}
+}
+
+func TestSaveImageRejectsHugeImage(t *testing.T) {
+	f := newTestService(t)
+	if got, err := f.SaveImage("", ".png", make([]byte, maxImageBytes+1)); err == nil {
+		t.Errorf("SaveImage = %q, want an error", got)
+	}
+}
+
+func TestSaveImageRejectsBadInput(t *testing.T) {
+	f := newTestService(t, "a.md")
+	for _, tc := range []struct{ dir, ext string }{
+		{"", ".exe"},
+		{"", ""},
+		{"..", ".png"},
+		{"../x", ".png"},
+		{"a.md", ".png"},
+		{"missing", ".png"},
+	} {
+		if got, err := f.SaveImage(tc.dir, tc.ext, []byte("x")); err == nil {
+			t.Errorf("SaveImage(%q, %q) = %q, want an error", tc.dir, tc.ext, got)
+		}
+	}
+}
+
+func TestHandler(t *testing.T) {
+	f := newTestService(t, "pic.png", "notes.md", ".secret")
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "out.png"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(f.dir, "link")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(f.dir, "dir.png"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(f.dir, ".hidden"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(f.dir, ".hidden", "a.png"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]int{
+		"/files/pic.png":       http.StatusOK,
+		"/files/.secret":       http.StatusNotFound,
+		"/files/.hidden/a.png": http.StatusNotFound,
+		"/files/nope.png":      http.StatusNotFound,
+		"/files/notes.md":      http.StatusNotFound, // not an image
+		"/files/":              http.StatusNotFound, // no folder listings
+		"/files/dir.png":       http.StatusNotFound,
+		"/files/link/out.png":  http.StatusNotFound, // symlink leaves the data directory
+	} {
+		rec := httptest.NewRecorder()
+		f.handler().ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
+		if rec.Code != want {
+			t.Errorf("GET %s = %d, want %d", path, rec.Code, want)
+		}
+		if want == http.StatusOK && rec.Header().Get("Cache-Control") != "no-cache" {
+			t.Errorf("GET %s: Cache-Control = %q, want no-cache", path, rec.Header().Get("Cache-Control"))
+		}
 	}
 }
