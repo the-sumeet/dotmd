@@ -1,0 +1,71 @@
+@import "tailwindcss";
+@import "@fontsource-variable/quicksand";
+
+/* Colour tokens copied from frontend/src/app.css so the site matches the app. */
+:root {
+  --background: oklch(1.0000 0 0);
+  --foreground: oklch(0.1884 0.0128 248.5103);
+  --card: oklch(0.9784 0.0011 197.1387);
+  --card-foreground: oklch(0.1884 0.0128 248.5103);
+  --primary: oklch(0.6723 0.1606 244.9955);
+  --primary-foreground: oklch(1.0000 0 0);
+  --secondary: oklch(0.1884 0.0128 248.5103);
+  --muted: oklch(0.9222 0.0013 286.3737);
+  --muted-foreground: oklch(0.1884 0.0128 248.5103);
+  --accent: oklch(0.9392 0.0166 250.8453);
+  --accent-foreground: oklch(0.6723 0.1606 244.9955);
+  --border: oklch(0.9317 0.0118 231.6594);
+  --ring: oklch(0.6818 0.1584 243.3540);
+  --font-sans: 'Quicksand Variable', 'Quicksand', sans-serif;
+  --font-mono: Menlo, monospace;
+  --radius: 1.3rem;
+}
+
+/* The app toggles a `.dark` class; the site just follows the OS setting. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: oklch(0 0 0);
+    --foreground: oklch(0.9328 0.0025 228.7857);
+    --card: oklch(0.2097 0.0080 274.5332);
+    --card-foreground: oklch(0.8853 0 0);
+    --primary: oklch(0.6692 0.1607 245.0110);
+    --primary-foreground: oklch(1.0000 0 0);
+    --secondary: oklch(0.9622 0.0035 219.5331);
+    --muted: oklch(0.2090 0 0);
+    --muted-foreground: oklch(0.5637 0.0078 247.9662);
+    --accent: oklch(0.1928 0.0331 242.5459);
+    --accent-foreground: oklch(0.6692 0.1607 245.0110);
+    --border: oklch(0.2674 0.0047 248.0045);
+    --ring: oklch(0.6818 0.1584 243.3540);
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 4px);
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+}

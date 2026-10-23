@@ -57,3 +57,13 @@ Take a moment to familiarize yourself with your project structure:
 4. When ready, build your application with `wails3 build`.
 
 Happy coding with Wails3! If you encounter any issues or have questions, don't hesitate to consult the documentation or reach out to the Wails community.
+
+## Website
+
+The landing page lives in `website/` (Astro) and is deployed to GitHub Pages by `.github/workflows/pages.yml`.
+
+```
+cd website
+npm install
+npm run dev
+```

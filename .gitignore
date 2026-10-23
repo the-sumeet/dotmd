@@ -10,3 +10,8 @@ build/ios/xcode/gen/
 build/android/overlay.json
 build/android/gen/
 build/linux/dotmd.desktop
+
+# Landing page
+website/dist
+website/node_modules
+website/.astro

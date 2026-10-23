@@ -1,0 +1,24 @@
+---
+const features = [
+  { title: "Plain Markdown files", body: "Notes are ordinary files and folders you own. No database, no lock-in." },
+  { title: "File explorer", body: "Browse your notes in a sidebar, create files and folders, rename, duplicate or delete from the context menu." },
+  { title: "Autosaving editor", body: "Open a note and start typing. Changes are saved as you go." },
+  { title: "Linked notes", body: "Link one note to another and open it with a click." },
+  { title: "Paste images", body: "Paste an image into a note and it is saved right next to it." },
+  { title: "Light and dark", body: "Switch themes from the sidebar." },
+];
+---
+
+<section class="mx-auto max-w-5xl px-4 py-16 sm:px-6" id="features">
+  <h2 class="mb-10 text-center text-3xl font-bold">Features</h2>
+  <ul class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    {
+      features.map((f) => (
+        <li class="rounded-lg border border-border bg-card p-6 text-card-foreground">
+          <h3 class="mb-2 text-lg font-semibold">{f.title}</h3>
+          <p class="text-foreground/70">{f.body}</p>
+        </li>
+      ))
+    }
+  </ul>
+</section>
