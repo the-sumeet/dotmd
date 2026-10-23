@@ -1,6 +1,5 @@
 <script lang="ts">
   import "../app.css";
-  import * as Breadcrumb from "$lib/components/ui/breadcrumb/index.js";
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
   import { Separator } from "$lib/components/ui/separator/index.js";
   import { Toaster } from "$lib/components/ui/sonner/index.js";
@@ -54,31 +53,11 @@
         ]}
       />
       {#if editor.path}
-        {@const segments = editor.path.split("/")}
-        {@const name = segments[segments.length - 1]}
-        <!-- Deep paths collapse to first › … › parent › file (null marks the ellipsis); long names truncate. -->
-        {@const folders =
-          segments.length > 3
-            ? [segments[0], null, segments[segments.length - 2]]
-            : segments.slice(0, -1)}
-        <Breadcrumb.Root class="min-w-0" title={editor.path}>
-          <Breadcrumb.List class="min-w-0 flex-nowrap">
-            {#each folders as folder, i (i)}
-              <Breadcrumb.Item class="hidden min-w-0 md:inline-flex">
-                {#if folder === null}
-                  <Breadcrumb.Ellipsis />
-                {:else}
-                  <span class="max-w-40 truncate">{folder}</span>
-                {/if}
-              </Breadcrumb.Item>
-              <Breadcrumb.Separator class="hidden md:block" />
-            {/each}
-            <Breadcrumb.Item class="min-w-0">
-              <Breadcrumb.Page class="truncate">{name}</Breadcrumb.Page>
-              {#if editor.dirty}<span class="text-foreground">•</span>{/if}
-            </Breadcrumb.Item>
-          </Breadcrumb.List>
-        </Breadcrumb.Root>
+        <!-- Just the file name; the full path stays available as a tooltip. -->
+        <div class="flex min-w-0 items-center gap-1.5 text-sm" title={editor.path}>
+          <span class="truncate text-foreground">{editor.path.split("/").pop()}</span>
+          {#if editor.dirty}<span class="text-foreground">•</span>{/if}
+        </div>
       {/if}
     </header>
     <div class="flex min-h-0 flex-1 flex-col gap-4 p-4">
