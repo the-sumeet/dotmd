@@ -27,7 +27,7 @@
   import { Clipboard } from "@wailsio/runtime";
   import { windowState } from "$lib/stores/window.svelte.js";
   import { editor } from "$lib/stores/editor.svelte.js";
-  import { files } from "$lib/stores/files.svelte.js";
+  import { files, parent, within } from "$lib/stores/files.svelte.js";
   import { relativeNotePath } from "$lib/note-links.js";
   import { FileService } from "../../../bindings/changeme";
   import type { FileNode } from "../../../bindings/changeme/models.js";
@@ -206,6 +206,82 @@
     }
   }
 
+  // Drag a file or folder onto a folder (or the empty area for the root) to move it.
+  let dragPath = $state<string | null>(null);
+  /** The folder a drop would land in right now ("" is the root). */
+  let dropDir = $state<string | null>(null);
+  let expandTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function canDrop(dir: string) {
+    return (
+      dragPath !== null && dir !== parent(dragPath) && !within(dir, dragPath)
+    );
+  }
+
+  function resetDrag() {
+    clearTimeout(expandTimer);
+    dragPath = null;
+    dropDir = null;
+  }
+
+  function onDragStart(e: DragEvent, node: FileNode) {
+    dragPath = node.path;
+    // WebKit won't start a drag without data.
+    e.dataTransfer?.setData("text/plain", node.path);
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+  }
+
+  function onDragOver(e: DragEvent, dir: string, expandable = false) {
+    // Ignore drags that didn't start on a tree row (e.g. files from the OS).
+    if (dragPath === null) return;
+    // Stop here even when the drop is refused, or it would fall through to the root zone.
+    e.stopPropagation();
+    if (!canDrop(dir)) {
+      clearTimeout(expandTimer);
+      dropDir = null;
+      return;
+    }
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    if (dropDir === dir) return;
+    dropDir = dir;
+    // Open a collapsed folder the drag rests on, so its contents are reachable.
+    clearTimeout(expandTimer);
+    if (expandable && !files.expanded.has(dir)) {
+      expandTimer = setTimeout(() => files.setExpanded(dir, true), 600);
+    }
+  }
+
+  function onDragLeave(e: DragEvent, dir: string) {
+    // Moving onto a child of the target (icon, label) also fires dragleave.
+    if (
+      e.currentTarget instanceof Node &&
+      e.relatedTarget instanceof Node &&
+      e.currentTarget.contains(e.relatedTarget)
+    )
+      return;
+    if (dropDir !== dir) return;
+    clearTimeout(expandTimer);
+    dropDir = null;
+  }
+
+  async function onDrop(e: DragEvent, dir: string) {
+    const from = dragPath;
+    if (from === null) return;
+    e.stopPropagation();
+    if (!canDrop(dir)) {
+      resetDrag();
+      return;
+    }
+    e.preventDefault();
+    resetDrag();
+    try {
+      await files.move(from, dir);
+    } catch (err) {
+      toast.error("Couldn't move", { description: String(err) });
+    }
+  }
+
   function isActive(url: string) {
     const current = page.url.pathname;
     return url === "/"
@@ -314,7 +390,12 @@
       class={["shrink-0", windowState.fullscreen ? "h-4" : "h-12"]}
       style="--wails-draggable: drag"
     />
-    <Sidebar.Content>
+    <Sidebar.Content
+      class={dropDir === "" ? "bg-sidebar-accent/40" : ""}
+      ondragover={(e: DragEvent) => onDragOver(e, "")}
+      ondragleave={(e: DragEvent) => onDragLeave(e, "")}
+      ondrop={(e: DragEvent) => void onDrop(e, "")}
+    >
       <Sidebar.Group>
         <Sidebar.GroupLabel>Files</Sidebar.GroupLabel>
         <Sidebar.GroupAction
@@ -506,6 +587,11 @@
               data-path={node.path}
               isActive={editor.path === node.path}
               onclick={() => editor.open(node.path)}
+              draggable="true"
+              ondragstart={(e: DragEvent) => onDragStart(e, node)}
+              ondragend={resetDrag}
+              ondragover={(e: DragEvent) => onDragOver(e, parent(node.path))}
+              ondrop={(e: DragEvent) => void onDrop(e, parent(node.path))}
             >
               <FileIcon />
               <span>{node.name}</span>
@@ -531,9 +617,20 @@
                 {#snippet child({ props })}
                   <Sidebar.MenuButton
                     {...mergeProps(collapsibleProps, props)}
-                    class="px-1.5"
+                    class={[
+                      "px-1.5",
+                      dropDir === node.path &&
+                        "bg-sidebar-accent ring-1 ring-sidebar-ring",
+                    ]}
                     title={node.path}
                     data-path={node.path}
+                    draggable="true"
+                    ondragstart={(e: DragEvent) => onDragStart(e, node)}
+                    ondragend={resetDrag}
+                    ondragover={(e: DragEvent) =>
+                      onDragOver(e, node.path, true)}
+                    ondragleave={(e: DragEvent) => onDragLeave(e, node.path)}
+                    ondrop={(e: DragEvent) => void onDrop(e, node.path)}
                   >
                     <ChevronRightIcon class="transition-transform" />
                     <FolderIcon />

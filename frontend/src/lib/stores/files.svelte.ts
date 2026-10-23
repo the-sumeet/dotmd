@@ -9,7 +9,8 @@ export function within(path: string | null, root: string): path is string {
   return path !== null && (path === root || path.startsWith(root + "/"));
 }
 
-function parent(path: string): string {
+/** The folder containing `path` ("" for the root). */
+export function parent(path: string): string {
   const i = path.lastIndexOf("/");
   return i === -1 ? "" : path.slice(0, i);
 }
@@ -40,7 +41,8 @@ class FilesStore {
 
   /** Expands every folder above `path`. */
   reveal(path: string) {
-    for (let dir = parent(path); dir !== ""; dir = parent(dir)) this.expanded.add(dir);
+    for (let dir = parent(path); dir !== ""; dir = parent(dir))
+      this.expanded.add(dir);
   }
 
   setExpanded(path: string, open: boolean) {
@@ -51,7 +53,18 @@ class FilesStore {
   /** Renames the entry at `from` to `name`, keeping it in the same folder. */
   async rename(from: string, name: string) {
     const dir = parent(from);
-    const to = dir === "" ? name : `${dir}/${name}`;
+    await this.moveTo(from, dir === "" ? name : `${dir}/${name}`);
+  }
+
+  /** Moves the entry at `from` into the folder `destDir` ("" for the root), keeping its name. */
+  async move(from: string, destDir: string) {
+    if (within(destDir, from)) return;
+    const name = from.slice(from.lastIndexOf("/") + 1);
+    await this.moveTo(from, destDir === "" ? name : `${destDir}/${name}`);
+    if (destDir !== "") this.expanded.add(destDir);
+  }
+
+  private async moveTo(from: string, to: string) {
     if (to === from) return;
     const rename = async () => {
       await FileService.Rename(from, to);
@@ -77,7 +90,9 @@ class FilesStore {
       await editor.open(path);
     } catch (err) {
       console.error("Failed to open new file", path, err);
-      toast.error("Created the file but couldn't open it", { description: path });
+      toast.error("Created the file but couldn't open it", {
+        description: path,
+      });
     }
     return path;
   }
@@ -108,7 +123,8 @@ class FilesStore {
     } else {
       await FileService.Delete(path);
     }
-    for (const p of [...this.expanded]) if (within(p, path)) this.expanded.delete(p);
+    for (const p of [...this.expanded])
+      if (within(p, path)) this.expanded.delete(p);
     await this.refresh();
   }
 }

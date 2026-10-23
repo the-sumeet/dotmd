@@ -146,6 +146,12 @@ func (f *FileService) Rename(from, to string) error {
 	if err != nil {
 		return err
 	}
+	if strings.HasPrefix(dst, src+string(filepath.Separator)) {
+		return fmt.Errorf("can't move %q into itself", from)
+	}
+	if parentInfo, err := os.Stat(filepath.Dir(dst)); err != nil || !parentInfo.IsDir() {
+		return fmt.Errorf("destination folder of %q doesn't exist", to)
+	}
 	// A case-only rename on a case-insensitive filesystem finds the source itself.
 	if dstInfo, err := os.Lstat(dst); err == nil && !os.SameFile(srcInfo, dstInfo) {
 		return fmt.Errorf("%q already exists", to)
@@ -340,7 +346,7 @@ const FilesPrefix = "/files/"
 func (f *FileService) handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rel := strings.TrimPrefix(r.URL.Path, FilesPrefix)
-		for _, seg := range strings.Split(rel, "/") {
+		for seg := range strings.SplitSeq(rel, "/") {
 			if strings.HasPrefix(seg, ".") {
 				http.NotFound(w, r)
 				return

@@ -24,6 +24,7 @@
     "@sveltejs/kit": "^2.0.0",
     "@sveltejs/vite-plugin-svelte": "^7.0.0",
     "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.6.5",
     "bits-ui": "^2.20.0",
     "cn": "^0.5.0",
     "mode-watcher": "^1.1.0",

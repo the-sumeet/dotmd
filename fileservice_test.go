@@ -172,6 +172,57 @@ func TestCreateRejectsBadInput(t *testing.T) {
 	}
 }
 
+func TestRenameMovesIntoFolder(t *testing.T) {
+	f := newTestService(t, "a.md")
+	if err := os.Mkdir(filepath.Join(f.dir, "dir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Rename("a.md", "dir/a.md"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(f.dir, "dir", "a.md")); err != nil {
+		t.Error(err)
+	}
+	if _, err := os.Stat(filepath.Join(f.dir, "a.md")); !os.IsNotExist(err) {
+		t.Errorf("source still exists: %v", err)
+	}
+}
+
+func TestRenameKeepsExisting(t *testing.T) {
+	f := newTestService(t, "a.md", "b.md")
+	if err := f.Rename("a.md", "b.md"); err == nil {
+		t.Error("Rename onto an existing file succeeded")
+	}
+	if _, err := os.Stat(filepath.Join(f.dir, "a.md")); err != nil {
+		t.Error(err)
+	}
+}
+
+func TestRenameCaseOnly(t *testing.T) {
+	f := newTestService(t, "a.md")
+	if err := f.Rename("a.md", "A.md"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRenameRejectsBadMoves(t *testing.T) {
+	f := newTestService(t, "a.md")
+	if err := os.MkdirAll(filepath.Join(f.dir, "dir", "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ name, from, to string }{
+		{"folder into itself", "dir", "dir/dir"},
+		{"folder into descendant", "dir", "dir/sub/dir"},
+		{"missing destination folder", "a.md", "nope/a.md"},
+		{"file as destination folder", "dir", "a.md/dir"},
+		{"outside data dir", "a.md", "../a.md"},
+	} {
+		if err := f.Rename(tc.from, tc.to); err == nil {
+			t.Errorf("%s: Rename(%q, %q) succeeded", tc.name, tc.from, tc.to)
+		}
+	}
+}
+
 func TestRevealRejectsBadInput(t *testing.T) {
 	f := newTestService(t, "a.md")
 	for _, rel := range []string{"", ".", "..", "../outside", "missing.md"} {
