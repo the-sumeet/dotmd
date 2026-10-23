@@ -4,6 +4,7 @@
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
   import { Separator } from "$lib/components/ui/separator/index.js";
   import { Toaster } from "$lib/components/ui/sonner/index.js";
+  import { ModeWatcher } from "mode-watcher";
   import AppSidebar from "$lib/components/app-sidebar.svelte";
   import { windowState } from "$lib/stores/window.svelte.js";
   import { editor } from "$lib/stores/editor.svelte.js";
@@ -16,6 +17,7 @@
 
 <svelte:window onresize={() => windowState.refresh()} />
 
+<ModeWatcher />
 <Toaster position="bottom-right" />
 
 <!-- Wider than the 16rem default so the file explorer (next to the icon rail) has room for names. -->
