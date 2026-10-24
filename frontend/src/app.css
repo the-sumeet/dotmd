@@ -191,6 +191,11 @@
   --md-border: var(--border);
   --md-selection: color-mix(in oklch, var(--primary) 25%, transparent);
   --md-caret: var(--foreground);
+  /* Centered reading column: wider windows grow the side padding instead of the text.
+     The content element stays full width, so the scrollbar sits at the window edge and
+     clicks in the margins still reach the editor. */
+  --content-width: 48rem;
+  --md-padding: 0.75rem max(1rem, calc((100% - var(--content-width)) / 2));
 }
 .dark .sveltedown {
   color-scheme: dark;
