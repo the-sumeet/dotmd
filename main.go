@@ -56,6 +56,28 @@ func main() {
 		},
 	})
 
+	// Cmd/Ctrl+W closes the open tab rather than the window; the frontend closes
+	// the window itself when no tab is open. The default Close items are role
+	// based, so their click handlers can't be overridden: replace them.
+	menu := application.DefaultApplicationMenu()
+	for _, label := range []string{"Close", "Close Window"} {
+		for item := menu.FindByLabel(label); item != nil; item = menu.FindByLabel(label) {
+			menu.RemoveMenuItem(item)
+		}
+	}
+	file := menu.FindByLabel("File")
+	if file == nil {
+		log.Println("default menu has no File menu; adding one for Close Tab")
+		menu.AddSubmenu("File")
+		file = menu.FindByLabel("File")
+	}
+	file.GetSubmenu().Add("Close Tab").
+		SetAccelerator("CmdOrCtrl+w").
+		OnClick(func(*application.Context) {
+			app.Event.Emit("tab:close")
+		})
+	app.Menu.SetApplicationMenu(menu)
+
 	// Create a new window with the necessary options.
 	// 'Title' is the title of the window.
 	// 'Mac' options tailor the window when running on macOS.

@@ -27,6 +27,7 @@
   import { Clipboard } from "@wailsio/runtime";
   import { windowState } from "$lib/stores/window.svelte.js";
   import { editor } from "$lib/stores/editor.svelte.js";
+  import { tabs } from "$lib/stores/tabs.svelte.js";
   import { files, parent, within } from "$lib/stores/files.svelte.js";
   import { relativeNotePath } from "$lib/note-links.js";
   import { FileService } from "../../../bindings/changeme";
@@ -586,7 +587,7 @@
               title={node.path}
               data-path={node.path}
               isActive={editor.path === node.path}
-              onclick={() => editor.open(node.path)}
+              onclick={() => tabs.open(node.path)}
               draggable="true"
               ondragstart={(e: DragEvent) => onDragStart(e, node)}
               ondragend={resetDrag}

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { MarkdownEditor, type ImageSnippetProps } from "@the-sumeet/sveltedown";
   import { editor } from "$lib/stores/editor.svelte.js";
+  import { tabs } from "$lib/stores/tabs.svelte.js";
   import { files } from "$lib/stores/files.svelte.js";
   import { resolveNoteLink } from "$lib/note-links.js";
   import { pasteImage } from "$lib/paste-image.js";
@@ -26,7 +27,7 @@
       toast.error("Note not found", { description: path });
       return;
     }
-    await editor.open(path);
+    await tabs.open(path);
   }
 </script>
 

@@ -3,6 +3,7 @@ import { toast } from "svelte-sonner";
 import { FileService } from "../../../bindings/changeme";
 import type { FileNode } from "../../../bindings/changeme/models.js";
 import { editor } from "./editor.svelte.js";
+import { tabs } from "./tabs.svelte.js";
 
 /** Whether `path` is `root` or inside the folder `root`. */
 export function within(path: string | null, root: string): path is string {
@@ -69,6 +70,7 @@ class FilesStore {
     const rename = async () => {
       await FileService.Rename(from, to);
       editor.moved(from, to);
+      tabs.moved(from, to);
     };
     // Hold the editor so a save can't recreate the file at its old path.
     await (within(editor.path, from) ? editor.hold(rename) : rename());
@@ -87,7 +89,7 @@ class FilesStore {
     await this.refresh();
     // The file exists now, so a failure to open it must not read as a failure to create it.
     try {
-      await editor.open(path);
+      await tabs.open(path);
     } catch (err) {
       console.error("Failed to open new file", path, err);
       toast.error("Created the file but couldn't open it", {
@@ -123,6 +125,7 @@ class FilesStore {
     } else {
       await FileService.Delete(path);
     }
+    await tabs.dropWithin(path);
     for (const p of [...this.expanded])
       if (within(p, path)) this.expanded.delete(p);
     await this.refresh();

@@ -4,9 +4,13 @@
   import { Separator } from "$lib/components/ui/separator/index.js";
   import { Toaster } from "$lib/components/ui/sonner/index.js";
   import { ModeWatcher } from "mode-watcher";
+  import { Events, Window } from "@wailsio/runtime";
   import AppSidebar from "$lib/components/app-sidebar.svelte";
   import { windowState } from "$lib/stores/window.svelte.js";
   import { editor } from "$lib/stores/editor.svelte.js";
+  import { tabs } from "$lib/stores/tabs.svelte.js";
+  import { tabShortcut } from "$lib/tab-shortcuts.js";
+  import TabBar from "$lib/components/tab-bar.svelte";
   import { page } from "$app/state";
   let { children } = $props();
 
@@ -20,9 +24,47 @@
   $effect(() => {
     windowState.refresh();
   });
+
+  $effect(() => {
+    void tabs.restore();
+  });
+
+  $effect(() => {
+    tabs.save();
+  });
+
+  // The native Close menu item (Cmd/Ctrl+W) closes the tab, or the window if there is none to close.
+  $effect(() => {
+    try {
+      return Events.On("tab:close", () => {
+        if (editor.path !== null && tabs.paths.includes(editor.path))
+          void tabs.close(editor.path);
+        else void Window.Close();
+      });
+    } catch (err) {
+      console.error("Failed to listen for tab:close", err);
+    }
+  });
+
+  // Capture phase, so the editor's own key bindings don't swallow tab shortcuts.
+  function onKeydown(e: KeyboardEvent) {
+    const action = tabShortcut(e);
+    if (action === null) return;
+    const acted =
+      action.type === "step"
+        ? tabs.step(action.step)
+        : tabs.select(action.index);
+    // With nothing to switch to, leave the key for inputs and dialogs.
+    if (!acted) return;
+    e.preventDefault();
+    e.stopPropagation();
+  }
 </script>
 
-<svelte:window onresize={() => windowState.refresh()} />
+<svelte:window
+  onresize={() => windowState.refresh()}
+  onkeydowncapture={onKeydown}
+/>
 
 <ModeWatcher />
 <Toaster position="bottom-right" />
@@ -34,7 +76,7 @@
   style="--sidebar-width: 20rem;"
 >
   <AppSidebar />
-  <Sidebar.Inset class="h-svh">
+  <Sidebar.Inset class="h-svh min-w-0">
     <!-- When the sidebar is collapsed only the narrow icon rail is left of the header, so clear the rest of the macOS traffic lights. -->
     <header
       class={[
@@ -52,12 +94,8 @@
           !showExplorer && "md:hidden",
         ]}
       />
-      {#if editor.path}
-        <!-- Just the file name; the full path stays available as a tooltip. -->
-        <div class="flex min-w-0 items-center gap-1.5 text-sm" title={editor.path}>
-          <span class="truncate text-foreground">{editor.path.split("/").pop()}</span>
-          {#if editor.dirty}<span class="text-foreground">•</span>{/if}
-        </div>
+      {#if tabs.paths.length > 0}
+        <TabBar />
       {/if}
     </header>
     <div class="flex min-h-0 flex-1 flex-col gap-4 p-4">

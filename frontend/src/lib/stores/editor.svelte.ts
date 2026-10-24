@@ -15,33 +15,50 @@ class EditorStore {
   #debounce: ReturnType<typeof setTimeout> | undefined;
   #interval: ReturnType<typeof setInterval> | undefined;
   #openSeq = 0;
+  /** Whether an `open` is in flight, i.e. one that re-selecting the current note should cancel. */
+  #opening = false;
   #saving: Promise<void> = Promise.resolve();
 
-  /** Flush the current file, then load `path` into the editor. */
-  async open(path: string) {
-    if (path === this.path) return;
+  /** Flush the current file, then load `path` into the editor. Resolves to whether `path` is now open. */
+  async open(path: string): Promise<boolean> {
+    if (path === this.path) {
+      // Re-selecting the open note cancels a switch still in flight.
+      if (this.#opening) {
+        ++this.#openSeq;
+        this.#opening = false;
+        this.loading = false;
+      }
+      return true;
+    }
     const seq = ++this.#openSeq;
-    await this.flush();
-    if (seq !== this.#openSeq) return;
-    this.loading = true;
+    this.#opening = true;
     try {
+      // Never replace text that couldn't be written to disk.
+      if (!(await this.save()) || seq !== this.#openSeq) return false;
+      this.loading = true;
       const text = await FileService.ReadFile(path);
-      if (seq !== this.#openSeq) return;
+      if (seq !== this.#openSeq) return false;
       this.path = path;
       this.content = text;
       this.dirty = false;
       this.docId++;
+      return true;
     } catch (err) {
       console.error("Failed to read file", path, err);
       toast.error("Couldn't open note", { description: path });
+      return false;
     } finally {
-      if (seq === this.#openSeq) this.loading = false;
+      if (seq === this.#openSeq) {
+        this.loading = false;
+        this.#opening = false;
+      }
     }
   }
 
   /** Close the current file, discarding unsaved changes. Resolves once any in-flight write has finished. */
   close(): Promise<void> {
     ++this.#openSeq;
+    this.#opening = false;
     clearTimeout(this.#debounce);
     clearInterval(this.#interval);
     this.#interval = undefined;
@@ -59,6 +76,7 @@ class EditorStore {
    */
   async hold<T>(fn: () => Promise<T>): Promise<T> {
     ++this.#openSeq; // cancel an in-flight open, which could land on a stale path
+    this.#opening = false;
     this.loading = true;
     try {
       await this.flush();
@@ -85,6 +103,14 @@ class EditorStore {
     // Guarantees a save during uninterrupted typing.
     this.#interval ??= setInterval(() => void this.flush(), MAX_INTERVAL_MS);
   };
+
+  /** Like `flush`, but resolves to false (with a toast) if the changes still couldn't be written. */
+  async save(): Promise<boolean> {
+    await this.flush();
+    if (!this.dirty) return true;
+    toast.error("Couldn't save note", { description: this.path ?? undefined });
+    return false;
+  }
 
   /** Write pending changes to disk. Resolves once the write has finished. */
   flush(): Promise<void> {
