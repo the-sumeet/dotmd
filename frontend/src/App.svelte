@@ -1,106 +1,94 @@
 <script lang="ts">
-  import {onMount} from 'svelte';
-  import {Events, WML} from "@wailsio/runtime";
-  import {GreetService} from "../bindings/changeme";
+  import { FileText, PenLine } from "@lucide/svelte";
+  import { Button } from "$lib/components/ui/button";
+  import Editor from "$lib/components/editor/Editor.svelte";
+  import { splitFrontmatter } from "$lib/editor/frontmatter";
+  import sample from "$lib/editor/sample.md?raw";
 
-  const wailsVersion = "v3.0.0-beta.19";
+  type Mode = "edit" | "markdown";
 
-  let name: string = $state('');
-  let time: string = $state('Listening for Time event...');
+  /** The note as plain markdown — the single source of truth. */
+  let markdown = $state(sample);
+  let mode = $state<Mode>("edit");
+  let sourceEdited = false;
+  let editor: Editor;
+  let source = $state<HTMLTextAreaElement>();
 
-  let titleNameEl: HTMLElement;
-  let toastEl: HTMLElement;
-  let resultEl: HTMLElement;
-  let toastTimer: ReturnType<typeof setTimeout>;
-
-  onMount(() => {
-    Events.On('time', (v: any) => {
-      // On a narrow screen the full RFC1123 stamp is too wide for the footer, so
-      // show just the clock time there (matching the CSS breakpoint).
-      const full = v.data;
-      const compact = (full.match(/\d{1,2}:\d{2}:\d{2}/) || [full])[0];
-      time = window.matchMedia('(max-width: 640px)').matches ? compact : full;
-    });
-    // Wire up data-wml-openURL links (logos + footer "Docs" link).
-    WML.Reload();
-  });
-
-  // Crossfade the framework word in the heading ("Wails + Svelte") to the name
-  // the user entered ("Wails + <name>"): the old word fades out while the new one
-  // fades in over the same spot.
-  function swapTitleName(name: string): void {
-    const current = titleNameEl.querySelector('.title-name-text:not(.is-outgoing)');
-    if (!current || current.textContent === name) {
-      return;
+  function setMode(next: Mode) {
+    if (next === mode) return;
+    if (next === "markdown") {
+      editor.flush();
+    } else {
+      if (sourceEdited) editor.setMarkdown(markdown);
+      sourceEdited = false;
+      queueMicrotask(() => editor.focus());
     }
-    const incoming = document.createElement('span');
-    incoming.className = 'title-name-text is-entering';
-    incoming.textContent = name;
-    current.classList.add('is-outgoing');
-    titleNameEl.appendChild(incoming);
-    // Force a reflow so the transitions run from the starting state.
-    void incoming.offsetWidth;
-    incoming.classList.remove('is-entering');
-    current.classList.add('is-leaving');
-    current.addEventListener('transitionend', () => current.remove(), {once: true});
+    mode = next;
   }
 
-  // Pop the toast with the message Go returned, then auto-dismiss it.
-  function showToast(message: string): void {
-    resultEl.innerText = message;
-    toastEl.classList.add('is-visible');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => toastEl.classList.remove('is-visible'), 4000);
-  }
+  // Count words in the body only, ignoring tokens with no letters or digits
+  // (markdown syntax such as `#`, `-`, `>`, `|`, `---`, `[x]`).
+  const words = $derived(
+    splitFrontmatter(markdown).body.split(/\s+/).filter((t) => /[\p{L}\p{N}]/u.test(t)).length,
+  );
 
-  const doGreet = (): void => {
-    let n = name || 'anonymous';
-    swapTitleName(n);
-    GreetService.Greet(n).then(showToast).catch(console.error);
-  }
+  // Grow the source textarea with its content so the page, not the textarea, scrolls.
+  $effect(() => {
+    markdown;
+    if (!source) return;
+    source.style.height = "auto";
+    source.style.height = `${source.scrollHeight}px`;
+  });
 </script>
 
-<main class="container">
-  <header class="brand">
-    <span class="brand-mark" data-wml-openURL="https://v3.wails.io">
-      <img src="/wails.png" class="brand-logo" alt="Wails logo"/>
-    </span>
-    <span class="brand-badge" data-wml-openURL="https://svelte.dev">
-      <img src="/svelte.svg" alt="Svelte logo"/>
-    </span>
+<div class="flex h-screen flex-col">
+  <header
+    class="bg-background/80 sticky top-0 z-10 flex h-12 shrink-0 items-center justify-between gap-4 border-b pr-3 pl-20 backdrop-blur"
+    style="--wails-draggable: drag"
+  >
+    <div class="flex min-w-0 items-center gap-2 text-sm">
+      <FileText class="text-muted-foreground size-4 shrink-0" />
+      <span class="truncate font-medium">Untitled.md</span>
+      <span class="text-muted-foreground text-xs">{words} words</span>
+    </div>
+
+    <div class="bg-muted flex items-center gap-0.5 rounded-lg p-0.5" style="--wails-draggable: no-drag">
+      <Button
+        size="xs"
+        variant={mode === "edit" ? "outline" : "ghost"}
+        aria-pressed={mode === "edit"}
+        onclick={() => setMode("edit")}
+      >
+        <PenLine data-icon="inline-start" /> Edit
+      </Button>
+      <Button
+        size="xs"
+        variant={mode === "markdown" ? "outline" : "ghost"}
+        aria-pressed={mode === "markdown"}
+        onclick={() => setMode("markdown")}
+      >
+        <span class="font-mono text-[0.7rem]" data-icon="inline-start">MD</span> Markdown
+      </Button>
+    </div>
   </header>
 
-  <h1 class="title"><span class="title-accent">Wails +</span> <span class="title-name" bind:this={titleNameEl}><span class="title-name-text">Svelte</span></span></h1>
-  <p class="subtitle">Build beautiful cross-platform apps with Go and Svelte.</p>
+  <main class="flex-1 overflow-y-auto">
+    <div class="mx-auto w-full max-w-3xl px-6 py-10 sm:px-10">
+      <!-- Kept mounted while hidden so editor state (history, selection) survives toggling. -->
+      <div class:hidden={mode !== "edit"}>
+        <Editor bind:this={editor} bind:value={markdown} />
+      </div>
 
-  <div class="greet">
-    <div class="input-box">
-      <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-      <input aria-label="input" class="input" bind:value={name} type="text" placeholder="Your name" autocomplete="off"/>
-      <button aria-label="greet-btn" class="btn" onclick={doGreet}>Greet
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-      </button>
+      {#if mode === "markdown"}
+        <textarea
+          bind:this={source}
+          bind:value={markdown}
+          oninput={() => (sourceEdited = true)}
+          spellcheck="false"
+          aria-label="Markdown source"
+          class="text-foreground block min-h-[60vh] w-full resize-none overflow-hidden bg-transparent font-mono text-sm leading-relaxed outline-none"
+        ></textarea>
+      {/if}
     </div>
-  </div>
-</main>
-
-<hr class="footer-divider"/>
-<footer class="footer">
-  <span class="footer-version">{wailsVersion}</span>
-  <span class="footer-time">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-    <span>{time}</span>
-  </span>
-  <a class="footer-docs" data-wml-openURL="https://v3.wails.io" aria-label="Wails documentation">Docs
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
-  </a>
-</footer>
-
-<div class="toast" bind:this={toastEl} role="status" aria-live="polite">
-  <span class="toast-label">From Go</span>
-  <span aria-label="result" class="toast-msg" bind:this={resultEl}></span>
+  </main>
 </div>
-
-<style>
-  /* Put your standard CSS here */
-</style>
