@@ -1,0 +1,12 @@
+# Keep the Docker build context small. frontend/dist is NOT ignored:
+# `task build:docker` builds it on the host and the image embeds it.
+.git
+.task
+bin
+frontend/node_modules
+build/android
+build/ios
+build/darwin
+build/windows
+build/linux
+**/.DS_Store

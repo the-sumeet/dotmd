@@ -3,6 +3,9 @@ plugins {
 }
 
 android {
+    // Must stay 'com.wails.app': the Wails Go runtime exports JNI symbols
+    // (Java_com_wails_app_WailsBridge_*) bound to this Java package.
+    // The user-facing app ID is `applicationId` below.
     namespace 'com.wails.app'
     compileSdk 35
 
@@ -11,11 +14,11 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.wails.app"
+        applicationId "xyz.sumeet.dotmd"
         minSdk 21
         targetSdk 35
         versionCode 1
-        versionName "1.0"
+        versionName "0.1.0"
 
         // Configure supported ABIs
         ndk {

@@ -12,7 +12,7 @@ includes:
 # For automatically managed signing & provisioning, use `task ios:xcode` and
 # build from the generated Xcode project instead.
 vars:
-  BUNDLE_ID: '{{.BUNDLE_ID | default "com.wails.app"}}'
+  BUNDLE_ID: '{{.BUNDLE_ID | default "xyz.sumeet.dotmd"}}'
   IOS_PLATFORM: '{{.IOS_PLATFORM | default "simulator"}}'
   MIN_IOS_VERSION: '{{.MIN_IOS_VERSION | default "15.0"}}'
   IOS_SDK: '{{if eq .IOS_PLATFORM "device"}}iphoneos{{else}}iphonesimulator{{end}}'
@@ -122,6 +122,8 @@ tasks:
       - rm -rf "{{.BIN_DIR}}/{{.APP_NAME}}.app"
       - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.app"
       - cp "{{.BIN_DIR}}/{{.APP_NAME | lower}}" "{{.BIN_DIR}}/{{.APP_NAME}}.app/"
+      # Re-apply the scene manifest in case update:build-assets rewrote the plist.
+      - task: patch:scene-manifest
       - cp build/ios/Info.plist "{{.BIN_DIR}}/{{.APP_NAME}}.app/"
       - |
         # Embed the provisioning profile for device builds when provided
@@ -241,8 +243,6 @@ tasks:
           # Boot the device
           echo "Booting device $DEVICE_ID..."
           xcrun simctl boot "$DEVICE_ID" 2>/dev/null || true
-          # Open Simulator app
-          open -a Simulator
           # Wait for boot (max 30 seconds)
           for i in {1..30}; do
             if xcrun simctl list devices booted | grep -q "Booted"; then
@@ -257,6 +257,12 @@ tasks:
             exit 1
           fi
         fi
+        # Always bring up the simulator window, even if a device was already
+        # booted headless. Xcode 27 replaced Simulator.app with DeviceHub.app.
+        DEV_APPS="$(xcode-select -p)/../Applications"
+        open -a Simulator 2>/dev/null \
+          || open "$DEV_APPS/DeviceHub.app" 2>/dev/null \
+          || echo "Could not open the simulator window; the app still runs headless."
     preconditions:
       - sh: command -v xcrun
         msg: "xcrun not found. Please run 'wails3 task ios:install:deps' to install iOS development dependencies"
@@ -284,6 +290,38 @@ tasks:
       - build/ios/xcode/project.pbxproj
     cmds:
       - wails3 ios xcode:gen -outdir build/ios/xcode -config build/config.yml
+      # xcode:gen rewrites xcode/main/Info.plist without our scene manifest,
+      # and with CFBundleExecutable "wailsapp" although the target builds
+      # PRODUCT_NAME "dotmd"; let Xcode substitute the real executable name.
+      - /usr/libexec/PlistBuddy -c 'Set :CFBundleExecutable $(EXECUTABLE_NAME)' build/ios/xcode/main/Info.plist
+      - task: patch:scene-manifest
+
+  patch:scene-manifest:
+    internal: true
+    summary: Ensure every iOS Info.plist declares the UIScene delegate
+    desc: |
+      Apps built with the iOS 27+ SDK must adopt the UIScene life cycle or
+      UIKit refuses to launch them. Wails does not yet, so the app provides
+      DotmdSceneDelegate (internal/iosscene) and every Info.plist must name it.
+      Idempotent: re-creates the manifest each time.
+    cmds:
+      - |
+        set -e
+        for P in build/ios/Info.plist build/ios/Info.dev.plist build/ios/xcode/main/Info.plist; do
+          [ -f "$P" ] || continue
+          # Delete fails only when the key is absent, which is fine.
+          /usr/libexec/PlistBuddy -c "Delete :UIApplicationSceneManifest" "$P" >/dev/null 2>&1 || true
+          K=":UIApplicationSceneManifest:UISceneConfigurations:UIWindowSceneSessionRoleApplication"
+          /usr/libexec/PlistBuddy \
+            -c "Add :UIApplicationSceneManifest dict" \
+            -c "Add :UIApplicationSceneManifest:UIApplicationSupportsMultipleScenes bool false" \
+            -c "Add :UIApplicationSceneManifest:UISceneConfigurations dict" \
+            -c "Add $K array" \
+            -c "Add $K:0 dict" \
+            -c "Add $K:0:UISceneConfigurationName string 'Default Configuration'" \
+            -c "Add $K:0:UISceneDelegateClassName string DotmdSceneDelegate" \
+            "$P"
+        done
 
   run:
     summary: Run the application in iOS Simulator
@@ -294,6 +332,8 @@ tasks:
       - rm -rf "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app"
       - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app"
       - cp "{{.BIN_DIR}}/{{.APP_NAME | lower}}" "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/{{.APP_NAME | lower}}"
+      # Re-apply the scene manifest in case update:build-assets rewrote the plist.
+      - task: patch:scene-manifest
       - cp build/ios/Info.dev.plist "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Info.plist"
       - |
         # Compile asset catalog and embed icons for dev bundle
