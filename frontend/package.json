@@ -27,11 +27,13 @@
   },
   "devDependencies": {
     "@fontsource-variable/geist": "^5.3.0",
+    "@internationalized/date": "^3.12.4",
     "@lucide/svelte": "^1.73.0",
     "@sveltejs/vite-plugin-svelte": "^7.0.0",
     "@tailwindcss/typography": "0.5.20",
     "@tailwindcss/vite": "4.3.5",
     "@tsconfig/svelte": "^5.0.8",
+    "bits-ui": "^2.21.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cn": "^0.5.2",
