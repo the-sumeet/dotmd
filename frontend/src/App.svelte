@@ -194,11 +194,15 @@
     document.addEventListener("visibilitychange", onVisibility);
 
     // The Go side holds back quitting until pending edits are written.
+    // If the save fails, the quit is called off once so the error stays
+    // visible; quitting again retries and quits even if it fails again.
     const offFlush = Events.On(FLUSH_EVENT, async () => {
-      try {
-        await save();
-      } finally {
+      void Lifecycle.Flushing(); // a slow save gets more time before Go gives up
+      if (await save()) {
         await Lifecycle.Saved();
+      } else {
+        notice += " Quit again to quit without saving.";
+        await Lifecycle.Unsaved();
       }
     });
 
