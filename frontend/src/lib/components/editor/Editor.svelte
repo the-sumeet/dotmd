@@ -7,8 +7,15 @@
   import BubbleMenu from "./BubbleMenu.svelte";
   import "./editor.css";
 
-  /** Full markdown of the note, including any YAML frontmatter. */
-  let { value = $bindable("") }: { value?: string } = $props();
+  let {
+    value = $bindable(""),
+    editable = true,
+  }: {
+    /** Full markdown of the note, including any YAML frontmatter. */
+    value?: string;
+    /** When false the document is read-only (e.g. no note is open). */
+    editable?: boolean;
+  } = $props();
 
   /** Serializing the whole doc is O(n), so do it after typing pauses, not per keystroke. */
   const SYNC_DELAY_MS = 300;
@@ -28,6 +35,7 @@
       extensions: createExtensions(bubbleElement!),
       content: body,
       contentType: "markdown",
+      editable,
       editorProps: {
         attributes: {
           class: "prose prose-neutral dark:prose-invert max-w-none min-h-[60vh] focus:outline-none",
@@ -44,13 +52,24 @@
     });
   });
 
+  $effect(() => {
+    // emitUpdate=false: toggling editability is not an edit and must not
+    // trigger a sync (which would re-serialize, and so rewrite, the note).
+    if (editor && editor.isEditable !== editable) editor.setEditable(editable, false);
+  });
+
   onDestroy(() => {
     flush();
     editor?.destroy();
   });
 
-  /** Write any pending edits to `value` immediately (before showing source, saving, …). */
+  /**
+   * Write pending edits to `value` immediately (before showing source, saving, …).
+   * Does nothing when there are none: serializing re-formats the markdown
+   * (bullet style, blank lines), so an untouched note must keep its original text.
+   */
   export function flush() {
+    if (syncTimer === undefined) return;
     clearTimeout(syncTimer);
     syncTimer = undefined;
     if (editor && !editor.isDestroyed) value = joinFrontmatter(frontmatter, editor.getMarkdown());
@@ -64,6 +83,7 @@
   export function setMarkdown(markdown: string) {
     if (!editor) return;
     clearTimeout(syncTimer);
+    syncTimer = undefined;
     const { frontmatter: fm, body } = splitFrontmatter(markdown);
     frontmatter = fm;
     editor.commands.setContent(body, { contentType: "markdown", emitUpdate: false });

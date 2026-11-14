@@ -4,6 +4,9 @@ import (
 	"embed"
 	"log"
 
+	"dotmd/internal/lifecycle"
+	"dotmd/internal/notes"
+
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -13,9 +16,17 @@ import (
 var assets embed.FS
 
 func main() {
+	life := lifecycle.New()
+
 	app := application.New(application.Options{
 		Name:        "dotmd",
 		Description: "Plain markdown notes",
+		Services: []application.Service{
+			application.NewService(notes.New()),
+			application.NewService(life),
+		},
+		// Quitting waits for the frontend to save pending edits.
+		ShouldQuit: lifecycle.ShouldQuit(life),
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 		},
@@ -24,7 +35,7 @@ func main() {
 		},
 	})
 
-	app.Window.NewWithOptions(application.WebviewWindowOptions{
+	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:  "dotmd",
 		Width:  1000,
 		Height: 700,
@@ -36,6 +47,7 @@ func main() {
 		},
 		URL: "/",
 	})
+	lifecycle.Attach(life, app, window)
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)

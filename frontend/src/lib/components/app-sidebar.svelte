@@ -4,9 +4,8 @@
   import InboxIcon from "@lucide/svelte/icons/inbox";
   import SendIcon from "@lucide/svelte/icons/send";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
-  import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
-  import FolderIcon from "@lucide/svelte/icons/folder";
-  import * as Collapsible from "$lib/components/ui/collapsible/index.js";
+  import FileTextIcon from "@lucide/svelte/icons/file-text";
+  import HashIcon from "@lucide/svelte/icons/hash";
 
   // This is sample data
   const data = {
@@ -15,23 +14,6 @@
       email: "m@example.com",
       avatar: "/avatars/shadcn.jpg",
     },
-    tree: [
-      ["lib", ["components", "button.svelte", "card.svelte"], "utils.ts"],
-      [
-        "routes",
-        ["hello", "+page.svelte", "+page.ts"],
-        "+page.svelte",
-        "+page.server.ts",
-        "+layout.svelte",
-      ],
-      ["static", "favicon.ico", "svelte.svg"],
-      "eslint.config.js",
-      ".gitignore",
-      "svelte.config.js",
-      "tailwind.config.js",
-      "package.json",
-      "README.md",
-    ],
     navMain: [
       {
         title: "Inbox",
@@ -64,108 +46,86 @@
         isActive: false,
       },
     ],
-    mails: [
-      {
-        name: "William Smith",
-        email: "williamsmith@example.com",
-        subject: "Meeting Tomorrow",
-        date: "09:34 AM",
-        teaser:
-          "Hi team, just a reminder about our meeting tomorrow at 10 AM.\nPlease come prepared with your project updates.",
-      },
-      {
-        name: "Alice Smith",
-        email: "alicesmith@example.com",
-        subject: "Re: Project Update",
-        date: "Yesterday",
-        teaser:
-          "Thanks for the update. The progress looks great so far.\nLet's schedule a call to discuss the next steps.",
-      },
-      {
-        name: "Bob Johnson",
-        email: "bobjohnson@example.com",
-        subject: "Weekend Plans",
-        date: "2 days ago",
-        teaser:
-          "Hey everyone! I'm thinking of organizing a team outing this weekend.\nWould you be interested in a hiking trip or a beach day?",
-      },
-      {
-        name: "Emily Davis",
-        email: "emilydavis@example.com",
-        subject: "Re: Question about Budget",
-        date: "2 days ago",
-        teaser:
-          "I've reviewed the budget numbers you sent over.\nCan we set up a quick call to discuss some potential adjustments?",
-      },
-      {
-        name: "Michael Wilson",
-        email: "michaelwilson@example.com",
-        subject: "Important Announcement",
-        date: "1 week ago",
-        teaser:
-          "Please join us for an all-hands meeting this Friday at 3 PM.\nWe have some exciting news to share about the company's future.",
-      },
-      {
-        name: "Sarah Brown",
-        email: "sarahbrown@example.com",
-        subject: "Re: Feedback on Proposal",
-        date: "1 week ago",
-        teaser:
-          "Thank you for sending over the proposal. I've reviewed it and have some thoughts.\nCould we schedule a meeting to discuss my feedback in detail?",
-      },
-      {
-        name: "David Lee",
-        email: "davidlee@example.com",
-        subject: "New Project Idea",
-        date: "1 week ago",
-        teaser:
-          "I've been brainstorming and came up with an interesting project concept.\nDo you have time this week to discuss its potential impact and feasibility?",
-      },
-      {
-        name: "Olivia Wilson",
-        email: "oliviawilson@example.com",
-        subject: "Vacation Plans",
-        date: "1 week ago",
-        teaser:
-          "Just a heads up that I'll be taking a two-week vacation next month.\nI'll make sure all my projects are up to date before I leave.",
-      },
-      {
-        name: "James Martin",
-        email: "jamesmartin@example.com",
-        subject: "Re: Conference Registration",
-        date: "1 week ago",
-        teaser:
-          "I've completed the registration for the upcoming tech conference.\nLet me know if you need any additional information from my end.",
-      },
-      {
-        name: "Sophia White",
-        email: "sophiawhite@example.com",
-        subject: "Team Dinner",
-        date: "1 week ago",
-        teaser:
-          "To celebrate our recent project success, I'd like to organize a team dinner.\nAre you available next Friday evening? Please let me know your preferences.",
-      },
-    ],
   };
 </script>
 
 <script lang="ts">
   import CommandIcon from "@lucide/svelte/icons/command";
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
-  import { Label } from "$lib/components/ui/label/index.js";
   import { useSidebar } from "$lib/components/ui/sidebar/context.svelte.js";
-  import { Switch } from "$lib/components/ui/switch/index.js";
   import NavUser from "./nav-user.svelte";
+  import SidebarSection from "./sidebar-section.svelte";
+  import FileTreeItem from "./file-tree-item.svelte";
+  import NewEntryMenu from "./new-entry-menu.svelte";
+  import TreeRow from "./tree-row.svelte";
+  import NewEntryDialog from "./new-entry-dialog.svelte";
+  import { noteTitle, type EntryKind, type Node, type Tag } from "$lib/notes/notes";
   import type { ComponentProps } from "svelte";
+  import { SvelteSet } from "svelte/reactivity";
 
   let {
     ref = $bindable(null),
+    tree = [],
+    tags = [],
+    activePath = null,
+    onopen,
+    oncreate,
     ...restProps
-  }: ComponentProps<typeof Sidebar.Root> = $props();
+  }: ComponentProps<typeof Sidebar.Root> & {
+    /** Folders and notes under the notes root. */
+    tree?: Node[];
+    /** Frontmatter tags and the notes carrying each. */
+    tags?: Tag[];
+    /** Root-relative path of the open note. */
+    activePath?: string | null;
+    onopen?: (path: string) => void;
+    /**
+     * Create a note or folder from a root-relative name (may contain "/").
+     * Resolves to the created path; rejects with a user-facing message.
+     */
+    oncreate?: (kind: EntryKind, path: string) => Promise<string>;
+  } = $props();
+
+  let filesOpen = $state(true);
+
+  /** State of the "new note / new folder" dialog. */
+  let dialogOpen = $state(false);
+  let dialogKind = $state<EntryKind>("note");
+  let dialogParent = $state("");
+
+  function requestNew(kind: EntryKind, parent: string) {
+    dialogKind = kind;
+    dialogParent = parent;
+    dialogOpen = true;
+  }
+
+  async function createEntry(kind: EntryKind, path: string) {
+    if (!oncreate) return;
+    const created = await oncreate(kind, path);
+    reveal(created);
+    if (kind === "folder") expanded.add(created);
+  }
 
   let activeItem = $state(data.navMain[0]);
-  let mails = $state(data.mails);
   const sidebar = useSidebar();
+
+  /** Paths of expanded folders. */
+  const expanded = new SvelteSet<string>();
+  /** Names of expanded tags. */
+  const expandedTags = new SvelteSet<string>();
+
+  /** Expand every folder above `path`. */
+  function reveal(path: string) {
+    const parts = path.split("/").slice(0, -1);
+    for (let i = 1; i <= parts.length; i++) {
+      expanded.add(parts.slice(0, i).join("/"));
+    }
+  }
+
+  // Reveal the open note.
+  $effect(() => {
+    if (activePath) reveal(activePath);
+  });
 </script>
 
 <Sidebar.Root
@@ -214,11 +174,6 @@
                   }}
                   onclick={() => {
                     activeItem = item;
-                    const mail = data.mails.sort(() => Math.random() - 0.5);
-                    mails = mail.slice(
-                      0,
-                      Math.max(5, Math.floor(Math.random() * 10) + 1),
-                    );
                     sidebar.setOpen(true);
                   }}
                   isActive={activeItem.title === item.title}
@@ -243,56 +198,73 @@
 
 
   <Sidebar.Root collapsible="none" class="hidden flex-1 md:flex">
+    <!-- Clear the macOS window buttons and let this strip drag the window. -->
+    <div class="h-9 shrink-0" style="--wails-draggable: drag"></div>
     <Sidebar.Content>
-      <Sidebar.Group>
-        <Sidebar.GroupLabel>Files</Sidebar.GroupLabel>
-        <Sidebar.GroupContent>
-          <Sidebar.Menu>
-            {#each data.tree as item, index (index)}
-              {@render Tree({ item })}
+      <SidebarSection title="Files" bind:open={filesOpen}>
+        {#snippet actions()}
+          <NewEntryMenu
+            location="Notes"
+            onnote={() => requestNew("note", "")}
+            onfolder={() => requestNew("folder", "")}
+          />
+        {/snippet}
+
+        {#each tree as node (node.path)}
+          <FileTreeItem
+            {node}
+            {activePath}
+            {expanded}
+            onopen={(path) => onopen?.(path)}
+            onnew={requestNew}
+          />
+        {:else}
+          <p class="px-2 py-1 text-sm text-sidebar-foreground/40">No notes yet</p>
+        {/each}
+      </SidebarSection>
+
+      <SidebarSection title="Tags">
+        {#each tags as tag (tag.name)}
+          {@const open = expandedTags.has(tag.name)}
+          {@const toggle = () =>
+            open ? expandedTags.delete(tag.name) : expandedTags.add(tag.name)}
+          <TreeRow
+            label={tag.name}
+            expandable
+            expanded={open}
+            trailing={String(tag.notes.length)}
+            ontoggle={toggle}
+            onselect={toggle}
+          >
+            {#snippet icon()}<HashIcon />{/snippet}
+          </TreeRow>
+          {#if open}
+            {#each tag.notes as path (path)}
+              <TreeRow
+                depth={1}
+                label={noteTitle(path)}
+                title={path}
+                active={path === activePath}
+                onselect={() => onopen?.(path)}
+              >
+                {#snippet icon()}<FileTextIcon />{/snippet}
+              </TreeRow>
             {/each}
-          </Sidebar.Menu>
-        </Sidebar.GroupContent>
-      </Sidebar.Group>
+          {/if}
+        {:else}
+          <p class="px-2 py-1 text-sm text-sidebar-foreground/40">
+            Add <code>tags: [idea]</code> to a note's frontmatter
+          </p>
+        {/each}
+      </SidebarSection>
     </Sidebar.Content>
     <Sidebar.Rail />
   </Sidebar.Root>
 </Sidebar.Root>
 
-<!-- eslint-disable-next-line @typescript-eslint/no-explicit-any -->
-{#snippet Tree({ item }: { item: string | any[] })}
-  {@const [name, ...items] = Array.isArray(item) ? item : [item]}
-  {#if !items.length}
-    <Sidebar.MenuButton
-      isActive={name === "button.svelte"}
-      class="data-[active=true]:bg-transparent"
-    >
-      <FileIcon />
-      {name}
-    </Sidebar.MenuButton>
-  {:else}
-    <Sidebar.MenuItem>
-      <Collapsible.Root
-        class="group/collapsible [&[data-state=open]>button>svg:first-child]:rotate-90"
-        open={name === "lib" || name === "components"}
-      >
-        <Collapsible.Trigger>
-          {#snippet child({ props })}
-            <Sidebar.MenuButton {...props}>
-              <ChevronRightIcon class="transition-transform" />
-              <FolderIcon />
-              {name}
-            </Sidebar.MenuButton>
-          {/snippet}
-        </Collapsible.Trigger>
-        <Collapsible.Content>
-          <Sidebar.MenuSub>
-            {#each items as subItem, index (index)}
-              {@render Tree({ item: subItem })}
-            {/each}
-          </Sidebar.MenuSub>
-        </Collapsible.Content>
-      </Collapsible.Root>
-    </Sidebar.MenuItem>
-  {/if}
-{/snippet}
+<NewEntryDialog
+  bind:open={dialogOpen}
+  kind={dialogKind}
+  parent={dialogParent}
+  oncreate={createEntry}
+/>
