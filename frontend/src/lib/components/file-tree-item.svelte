@@ -1,7 +1,7 @@
 <!--
   One entry of the Files tree: a note, or a folder that renders its children
   (recursively) when expanded. Every row has a "+" menu for creating a note or
-  folder in the folder the row belongs to.
+  folder in the folder the row belongs to; note rows also get a "⋯" menu.
 -->
 <script lang="ts">
   import FileTextIcon from "@lucide/svelte/icons/file-text";
@@ -10,6 +10,7 @@
   import type { SvelteSet } from "svelte/reactivity";
   import { noteTitle, type EntryKind, type Node } from "$lib/notes/notes";
   import NewEntryMenu from "./new-entry-menu.svelte";
+  import NoteActionsMenu from "./note-actions-menu.svelte";
   import TreeRow from "./tree-row.svelte";
   import Self from "./file-tree-item.svelte";
 
@@ -69,6 +70,9 @@
       onnote={() => onnew("note", parent)}
       onfolder={() => onnew("folder", parent)}
     />
+    {#if !node.isDir}
+      <NoteActionsMenu path={node.path} {activePath} />
+    {/if}
   {/snippet}
 </TreeRow>
 

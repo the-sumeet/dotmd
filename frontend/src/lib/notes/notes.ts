@@ -65,6 +65,19 @@ export function createFolder(path: string): Promise<string> {
   return NotesService.CreateFolder(path);
 }
 
+/**
+ * Root-relative path of the note a link in note `from` points to. Hrefs are
+ * relative to `from`'s folder ("/" = notes root). Rejects if there is no such note.
+ */
+export function resolveLink(from: string, href: string): Promise<string> {
+  return NotesService.ResolveLink(from, href);
+}
+
+/** Href that links note `from` to note `to`, relative to `from`'s folder. */
+export function linkPath(from: string, to: string): Promise<string> {
+  return NotesService.LinkPath(from, to);
+}
+
 export function notesRoot(): Promise<string> {
   return NotesService.Root();
 }

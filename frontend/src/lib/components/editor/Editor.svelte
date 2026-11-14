@@ -5,17 +5,21 @@
   import { createExtensions } from "$lib/editor/extensions";
   import { joinFrontmatter, splitFrontmatter } from "$lib/editor/frontmatter";
   import BubbleMenu from "./BubbleMenu.svelte";
+  import LinkMenu from "./LinkMenu.svelte";
   import TableMenu from "./TableMenu.svelte";
   import "./editor.css";
 
   let {
     value = $bindable(""),
     editable = true,
+    onopenlink,
   }: {
     /** Full markdown of the note, including any YAML frontmatter. */
     value?: string;
     /** When false the document is read-only (e.g. no note is open). */
     editable?: boolean;
+    /** Follow a link (Cmd/Ctrl+click or the link menu), given its raw href. */
+    onopenlink?: (href: string) => void;
   } = $props();
 
   /** Serializing the whole doc is O(n), so do it after typing pauses, not per keystroke. */
@@ -24,6 +28,7 @@
   let element: HTMLDivElement;
   let bubbleElement = $state<HTMLDivElement>();
   let tableMenuElement = $state<HTMLDivElement>();
+  let linkMenuElement = $state<HTMLDivElement>();
   let editor = $state.raw<Editor | null>(null);
   let revision = $state(0);
   let frontmatter = "";
@@ -34,7 +39,12 @@
     frontmatter = fm;
     editor = new Editor({
       element,
-      extensions: createExtensions(bubbleElement!, tableMenuElement!),
+      extensions: createExtensions({
+        bubbleMenu: bubbleElement!,
+        tableMenu: tableMenuElement!,
+        linkMenu: linkMenuElement!,
+        onOpenLink: (href) => onopenlink?.(href),
+      }),
       content: body,
       contentType: "markdown",
       editable,
@@ -101,3 +111,4 @@
 <div bind:this={element} class="dotmd-editor"></div>
 <BubbleMenu {editor} {revision} bind:element={bubbleElement} />
 <TableMenu {editor} {revision} bind:element={tableMenuElement} />
+<LinkMenu {editor} {revision} bind:element={linkMenuElement} onopen={onopenlink} />

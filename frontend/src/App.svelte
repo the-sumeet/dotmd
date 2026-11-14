@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { Events } from "@wailsio/runtime";
+  import { Browser, Events } from "@wailsio/runtime";
   import { FileText, PenLine } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import Editor from "$lib/components/editor/Editor.svelte";
@@ -19,6 +19,7 @@
     loadTree,
     noteTitle,
     readNote,
+    resolveLink,
     tagsOf,
     withNoteTags,
     writeNote,
@@ -26,6 +27,7 @@
     type Node,
     type Tag,
   } from "$lib/notes/notes";
+  import { canOpenExternally, isExternalLink, normalizeHref } from "$lib/notes/links";
 
   type Mode = "edit" | "markdown";
 
@@ -161,6 +163,25 @@
       notice = "";
     } finally {
       if (token === openToken) opening = false;
+    }
+  }
+
+  /**
+   * Follow a link from the open note: URLs open in the system browser, and
+   * relative paths open the note they point to.
+   */
+  async function followLink(raw: string) {
+    const href = normalizeHref(raw); // "example.com" is a web address, not a note
+    try {
+      if (isExternalLink(href)) {
+        if (canOpenExternally(href)) await Browser.OpenURL(href);
+        else notice = `Couldn't open link: only web, email and phone links open outside dotmd`;
+        return;
+      }
+      if (href.startsWith("#") || !currentPath) return; // headings: not supported yet
+      await openNote(await resolveLink(currentPath, href));
+    } catch (err) {
+      notice = `Couldn't open link: ${errorText(err)}`;
     }
   }
 
@@ -310,7 +331,12 @@
           <div class="mx-auto w-full max-w-3xl px-6 py-10 sm:px-10">
             <!-- Kept mounted while hidden so editor state (history, selection) survives toggling. -->
             <div class:hidden={mode !== "edit"}>
-              <Editor bind:this={editor} bind:value={markdown} editable={canEdit} />
+              <Editor
+                bind:this={editor}
+                bind:value={markdown}
+                editable={canEdit}
+                onopenlink={followLink}
+              />
             </div>
 
             {#if mode === "markdown"}

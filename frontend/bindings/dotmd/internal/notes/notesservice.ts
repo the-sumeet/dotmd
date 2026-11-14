@@ -33,10 +33,32 @@ export function CreateNote(path: string): $CancellablePromise<string> {
 }
 
 /**
+ * LinkPath returns the href that links the note at from to the note at to,
+ * relative to from's folder (e.g. "Projects/A.md" -> "Plan.md" is "../Plan.md").
+ * Both paths are root-relative. Spaces are kept; "%", "#" and "?" are escaped
+ * so ResolveLink reads them as part of the name.
+ */
+export function LinkPath($from: string, to: string): $CancellablePromise<string> {
+    return $Call.ByID(3352834398, $from, to);
+}
+
+/**
  * Read returns the contents of the note at path.
  */
 export function Read(path: string): $CancellablePromise<string> {
     return $Call.ByID(1047430633, path);
+}
+
+/**
+ * ResolveLink turns the href of a markdown link in the note at from into the
+ * root-relative path of the note it points to. Like markdown links elsewhere,
+ * hrefs are relative to the linking note's folder; a leading "/" makes them
+ * relative to the notes root. A "#heading" or "?query" suffix is ignored,
+ * percent-escapes are decoded, and ".md" may be left off. The target must be
+ * an existing markdown file inside the notes folder.
+ */
+export function ResolveLink($from: string, href: string): $CancellablePromise<string> {
+    return $Call.ByID(1016941115, $from, href);
 }
 
 /**

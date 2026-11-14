@@ -56,6 +56,7 @@
   import NavUser from "./nav-user.svelte";
   import SidebarSection from "./sidebar-section.svelte";
   import FileTreeItem from "./file-tree-item.svelte";
+  import NoteActionsMenu from "./note-actions-menu.svelte";
   import NewEntryMenu from "./new-entry-menu.svelte";
   import TreeRow from "./tree-row.svelte";
   import NewEntryDialog from "./new-entry-dialog.svelte";
@@ -261,6 +262,7 @@
                 onselect={() => openNote(path)}
               >
                 {#snippet icon()}<FileTextIcon />{/snippet}
+                {#snippet actions()}<NoteActionsMenu {path} {activePath} />{/snippet}
               </TreeRow>
             {/each}
           {/if}
