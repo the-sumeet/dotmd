@@ -17,18 +17,21 @@ var assets embed.FS
 
 func main() {
 	life := lifecycle.New()
+	notesSvc := notes.New()
 
 	app := application.New(application.Options{
 		Name:        "dotmd",
 		Description: "Plain markdown notes",
 		Services: []application.Service{
-			application.NewService(notes.New()),
+			application.NewService(notesSvc),
 			application.NewService(life),
 		},
 		// Quitting waits for the frontend to save pending edits.
 		ShouldQuit: lifecycle.ShouldQuit(life),
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
+			// Lets notes show images stored beside them.
+			Middleware: notes.FileMiddleware(notesSvc),
 		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,

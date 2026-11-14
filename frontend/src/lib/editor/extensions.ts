@@ -1,6 +1,5 @@
 import { findParentNode, type Editor, type Extensions } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
-import Image from "@tiptap/extension-image";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
 import { TableKit } from "@tiptap/extension-table";
 import { Placeholder } from "@tiptap/extensions";
@@ -10,7 +9,10 @@ import { Markdown } from "@tiptap/markdown";
 import { CellSelection } from "@tiptap/pm/tables";
 import type { EditorView } from "@tiptap/pm/view";
 import { looksLikeNoteFile } from "$lib/notes/links";
+import { ImageUpload } from "./image-upload";
 import { LinkOpen } from "./link-open";
+import { markdownHref } from "./markdown-href";
+import { NoteImage } from "./note-image";
 import { InlineImageParagraph } from "./paragraph";
 import { SlashCommand } from "./slash-command.svelte";
 import { TableShortcut } from "./table-shortcut";
@@ -58,26 +60,6 @@ const TableMenu = BubbleMenu.extend({
 /** BubbleMenu for a caret inside a link (the text menu needs a selection). */
 const LinkMenu = BubbleMenu.extend({ name: "linkMenu" });
 
-/** True if every ")" in `text` closes an earlier "(". */
-function balancedParens(text: string): boolean {
-  let depth = 0;
-  for (const ch of text) {
-    if (ch === "(") depth++;
-    else if (ch === ")" && --depth < 0) return false;
-  }
-  return depth === 0;
-}
-
-/**
- * Markdown link destination for `href`. One with spaces, angle brackets or
- * unbalanced parentheses (a note named "My Note.md") is wrapped in `<…>`,
- * or it would not parse as a link.
- */
-export function markdownHref(href: string): string {
-  if (!/[\s<>]/.test(href) && balancedParens(href)) return href;
-  return `<${href.replace(/</g, "%3C").replace(/>/g, "%3E")}>`;
-}
-
 /**
  * Link mark whose markdown keeps hrefs with spaces valid (see markdownHref)
  * and that never autolinks a note file name.
@@ -104,6 +86,15 @@ export interface ExtensionOptions {
   linkMenu: HTMLElement;
   /** Called with a link's raw href when it is Cmd/Ctrl+clicked. */
   onOpenLink: (href: string) => void;
+  /** Root-relative path of the open note, which image srcs are relative to. */
+  notePath: () => string | null;
+  /** Save an image file beside the note; resolves to its href. */
+  uploadImage: (file: File) => Promise<string>;
+  /** Download an image URL beside the note; resolves to its href. */
+  downloadImage: (url: string) => Promise<string>;
+  /** Open the system file picker for images. */
+  pickImage: () => void;
+  onImageError: (message: string) => void;
 }
 
 /**
@@ -120,7 +111,14 @@ export function createExtensions(options: ExtensionOptions): Extensions {
     NoteLink.configure({ openOnClick: false, autolink: true, defaultProtocol: "https" }),
     LinkOpen.configure({ onOpen: options.onOpenLink }),
     InlineImageParagraph,
-    Image.configure({ inline: true }), // markdown images are inline (`![alt](src)`)
+    // Markdown images are inline (`![alt](src)`).
+    NoteImage.configure({ inline: true, notePath: options.notePath }),
+    ImageUpload.configure({
+      upload: options.uploadImage,
+      download: options.downloadImage,
+      pick: options.pickImage,
+      onError: options.onImageError,
+    }),
     TaskList,
     TaskItem.configure({ nested: true }),
     TableShortcut,

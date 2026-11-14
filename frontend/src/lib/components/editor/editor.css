@@ -131,6 +131,22 @@
   outline: 2px solid var(--ring);
 }
 
+/* Where an image goes while it is being saved (see image-upload.ts). */
+.dotmd-editor .tiptap .dotmd-image-placeholder {
+  display: inline-block;
+  width: 8rem;
+  height: 5rem;
+  vertical-align: bottom;
+  border-radius: var(--radius);
+  background: var(--muted);
+  animation: dotmd-image-pulse 1.2s ease-in-out infinite;
+}
+@keyframes dotmd-image-pulse {
+  50% {
+    opacity: 0.5;
+  }
+}
+
 /* Selected node (e.g. horizontal rule) */
 .dotmd-editor .tiptap hr.ProseMirror-selectednode {
   border-top-color: var(--ring);

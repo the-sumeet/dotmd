@@ -1,10 +1,12 @@
-<!-- "⋯" menu on a note row. "Copy relative path" copies the href that links
-     the open note to this one, ready to paste into the link input. -->
+<!-- "⋯" menu on a note or image row. "Copy relative path" copies the href
+     that links the open note to this file, ready to paste into the link input.
+     Rows that can be deleted (images) also get "Delete…". -->
 <script lang="ts">
   import { onDestroy } from "svelte";
   import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
   import CheckIcon from "@lucide/svelte/icons/check";
   import LinkIcon from "@lucide/svelte/icons/link";
+  import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import { Clipboard } from "@wailsio/runtime";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
   import { linkPath, noteTitle } from "$lib/notes/notes";
@@ -12,11 +14,14 @@
   let {
     path,
     activePath,
+    ondelete,
   }: {
-    /** The note this row stands for. */
+    /** The file this row stands for. */
     path: string;
     /** The open note, which links are relative to. */
     activePath: string | null;
+    /** Ask to delete the file (e.g. open a confirm dialog); omitted, no item shows. */
+    ondelete?: () => void;
   } = $props();
 
   /** How long "Copied" shows before the menu closes. */
@@ -82,5 +87,11 @@
         <LinkIcon /> Copy relative path
       {/if}
     </DropdownMenu.Item>
+    {#if ondelete}
+      <DropdownMenu.Separator />
+      <DropdownMenu.Item variant="destructive" onSelect={ondelete}>
+        <Trash2Icon /> Delete…
+      </DropdownMenu.Item>
+    {/if}
   </DropdownMenu.Content>
 </DropdownMenu.Root>

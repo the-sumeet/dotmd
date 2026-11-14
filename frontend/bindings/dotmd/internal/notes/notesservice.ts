@@ -33,6 +33,31 @@ export function CreateNote(path: string): $CancellablePromise<string> {
 }
 
 /**
+ * DeleteImage deletes the image at path. An "assets" folder left empty is
+ * removed too, so it does not linger beside the note.
+ */
+export function DeleteImage(p: string): $CancellablePromise<void> {
+    return $Call.ByID(2003821379, p);
+}
+
+/**
+ * DownloadImage downloads the image at rawURL (http or https) into the
+ * "assets" folder beside the note at note, and returns the href that links
+ * the note to it.
+ */
+export function DownloadImage(note: string, rawURL: string): $CancellablePromise<string> {
+    return $Call.ByID(1314791562, note, rawURL);
+}
+
+/**
+ * Images lists every image under the notes root, sorted by path
+ * (case-insensitive). Hidden files and folders are skipped.
+ */
+export function Images(): $CancellablePromise<$models.Image[] | null> {
+    return $Call.ByID(847599719);
+}
+
+/**
  * LinkPath returns the href that links the note at from to the note at to,
  * relative to from's folder (e.g. "Projects/A.md" -> "Plan.md" is "../Plan.md").
  * Both paths are root-relative. Spaces are kept; "%", "#" and "?" are escaped
@@ -66,6 +91,16 @@ export function ResolveLink($from: string, href: string): $CancellablePromise<st
  */
 export function Root(): $CancellablePromise<string> {
     return $Call.ByID(2158031345);
+}
+
+/**
+ * SaveImage saves base64-encoded image data (pasted, dropped or picked) to the
+ * "assets" folder beside the note at note, and returns the href that links the
+ * note to it (e.g. "assets/plan-20261115-142301.png"). name is the original
+ * file name, if any; its extension is used when the data alone does not say.
+ */
+export function SaveImage(note: string, name: string, dataBase64: string): $CancellablePromise<string> {
+    return $Call.ByID(812947033, note, name, dataBase64);
 }
 
 /**

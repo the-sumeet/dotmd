@@ -223,6 +223,12 @@ func walk(root, rel string) ([]Node, error) {
 			if err != nil {
 				children = []Node{}
 			}
+			// Image folders beside notes (see SaveImage) are not shown unless
+			// they also hold notes. An "assets" folder without images (e.g.
+			// one the user just created) still shows.
+			if name == assetsDir && len(children) == 0 && hasImages(filepath.Join(root, filepath.FromSlash(path))) {
+				continue
+			}
 			nodes = append(nodes, Node{Name: name, Path: path, IsDir: true, Children: children})
 		} else if e.Type().IsRegular() && isMarkdown(name) {
 			nodes = append(nodes, Node{Name: name, Path: path, Children: []Node{}})

@@ -28,9 +28,20 @@
     type Tag,
   } from "$lib/notes/notes";
   import { canOpenExternally, isExternalLink, normalizeHref } from "$lib/notes/links";
+  import {
+    baseName,
+    deleteImage,
+    downloadImage,
+    loadImages,
+    relativeHref,
+    saveImageFile,
+    type Image,
+  } from "$lib/notes/images";
 
   type Mode = "edit" | "markdown";
 
+  /** Saving several images rescans the folder once, this long after the last. */
+  const IMAGES_REFRESH_DELAY_MS = 300;
   /** Wait this long after the last change before writing the note to disk. */
   const SAVE_DELAY_MS = 500;
   /** Sent by the Go side before quitting; see internal/lifecycle. */
@@ -45,6 +56,7 @@
 
   let tree = $state<Node[]>([]);
   let tags = $state<Tag[]>([]);
+  let images = $state<Image[]>([]);
   /** Root-relative path of the open note. */
   let currentPath = $state<string | null>(null);
   /** True while switching notes; editing is paused so no keystroke is lost. */
@@ -54,6 +66,7 @@
   /** Content last written to (or read from) disk. */
   let lastSaved: string | null = null;
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
+  let imagesTimer: ReturnType<typeof setTimeout> | undefined;
   /** Saves run one after another, so an older write never lands last. */
   let saveQueue: Promise<boolean> = Promise.resolve(true);
   /** Bumped per openNote call so only the latest click wins. */
@@ -136,6 +149,60 @@
     }
   }
 
+  async function refreshImages() {
+    try {
+      images = await loadImages();
+    } catch (err) {
+      console.error("Failed to load images", err);
+    }
+  }
+
+  /** Refresh the sidebar's images once a burst of saves (a drop of many files) ends. */
+  function scheduleImagesRefresh() {
+    clearTimeout(imagesTimer);
+    imagesTimer = setTimeout(refreshImages, IMAGES_REFRESH_DELAY_MS);
+  }
+
+  /** The open note, for saving an image beside it. */
+  function noteForImages(): string {
+    if (!currentPath || opening) throw new Error("open a note first");
+    return currentPath;
+  }
+
+  /** Save a pasted, dropped or picked image beside the open note. */
+  async function uploadImage(file: File): Promise<string> {
+    const href = await saveImageFile(noteForImages(), file);
+    scheduleImagesRefresh();
+    return href;
+  }
+
+  /** Keep a local copy of a pasted image URL beside the open note. */
+  async function fetchImage(url: string): Promise<string> {
+    const href = await downloadImage(noteForImages(), url);
+    scheduleImagesRefresh();
+    return href;
+  }
+
+  /** Show an image from the sidebar in the open note. */
+  function insertImage(path: string) {
+    if (!canEdit || mode !== "edit") {
+      notice = canEdit ? "Switch to Edit to add images" : "Open a note to add images";
+      return;
+    }
+    editor.insertImage(relativeHref(currentPath!, path), baseName(path));
+  }
+
+  function pickImage() {
+    if (!canEdit) return;
+    if (mode !== "edit") setMode("edit");
+    editor.pickImage();
+  }
+
+  async function removeImage(path: string) {
+    await deleteImage(path);
+    await refreshImages();
+  }
+
   async function openNote(path: string) {
     // Bump first, so clicking back to the open note cancels a pending switch.
     const token = ++openToken;
@@ -202,6 +269,7 @@
           tree = await loadTree();
         }
         void refreshTags();
+        void refreshImages();
         const first = firstNote(tree);
         if (first) await openNote(first);
       } catch (err) {
@@ -228,6 +296,7 @@
     });
 
     return () => {
+      clearTimeout(imagesTimer);
       document.removeEventListener("visibilitychange", onVisibility);
       offFlush();
     };
@@ -259,8 +328,11 @@
 </script>
 
 <Sidebar.Provider style="--sidebar-width: 350px;">
-  <AppSidebar {tree} {tags} activePath={currentPath} onopen={openNote}
+  <AppSidebar {tree} {tags} {images} activePath={currentPath} onopen={openNote}
     oncreate={createEntry}
+    onaddimage={pickImage}
+    oninsertimage={insertImage}
+    ondeleteimage={removeImage}
   />
   <Sidebar.Inset>
     <header
@@ -334,8 +406,12 @@
               <Editor
                 bind:this={editor}
                 bind:value={markdown}
-                editable={canEdit}
+                editable={canEdit && mode === "edit"}
+                notePath={currentPath}
                 onopenlink={followLink}
+                onuploadimage={uploadImage}
+                ondownloadimage={fetchImage}
+                onerror={(message) => (notice = message)}
               />
             </div>
 

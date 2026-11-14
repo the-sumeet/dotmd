@@ -7,6 +7,7 @@ export {
 };
 
 export type {
+    Image,
     Node,
     Tag
 } from "./models.js";

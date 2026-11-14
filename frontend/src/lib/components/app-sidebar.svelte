@@ -6,6 +6,7 @@
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import FileTextIcon from "@lucide/svelte/icons/file-text";
   import HashIcon from "@lucide/svelte/icons/hash";
+  import ImagePlusIcon from "@lucide/svelte/icons/image-plus";
 
   // This is sample data
   const data = {
@@ -60,7 +61,9 @@
   import NewEntryMenu from "./new-entry-menu.svelte";
   import TreeRow from "./tree-row.svelte";
   import NewEntryDialog from "./new-entry-dialog.svelte";
+  import DeleteImageDialog from "./delete-image-dialog.svelte";
   import { noteTitle, type EntryKind, type Node, type Tag } from "$lib/notes/notes";
+  import { imageSrc, type Image } from "$lib/notes/images";
   import type { ComponentProps } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
 
@@ -69,8 +72,12 @@
     tree = [],
     tags = [],
     activePath = null,
+    images = [],
     onopen,
     oncreate,
+    onaddimage,
+    oninsertimage,
+    ondeleteimage,
     ...restProps
   }: ComponentProps<typeof Sidebar.Root> & {
     /** Folders and notes under the notes root. */
@@ -85,7 +92,36 @@
      * Resolves to the created path; rejects with a user-facing message.
      */
     oncreate?: (kind: EntryKind, path: string) => Promise<string>;
+    /** Every image in the notes folder. */
+    images?: Image[];
+    /** Choose images from the computer and add them to the open note. */
+    onaddimage?: () => void;
+    /** Show an existing image (root-relative path) in the open note. */
+    oninsertimage?: (path: string) => void;
+    /** Delete an image file; rejects with a user-facing message. */
+    ondeleteimage?: (path: string) => Promise<void>;
   } = $props();
+
+  /** Image the delete dialog asks about. */
+  let deletePath = $state("");
+  let deleteOpen = $state(false);
+
+  function requestDelete(path: string) {
+    deletePath = path;
+    deleteOpen = true;
+  }
+
+  /** On phones, show the note the image went into instead of the sheet. */
+  function insertImage(path: string) {
+    if (!activePath) return;
+    oninsertimage?.(path);
+    if (sidebar.isMobile) sidebar.setOpenMobile(false);
+  }
+
+  function addImage() {
+    if (sidebar.isMobile) sidebar.setOpenMobile(false);
+    onaddimage?.();
+  }
 
   let filesOpen = $state(true);
 
@@ -272,6 +308,49 @@
           </p>
         {/each}
       </SidebarSection>
+
+      <SidebarSection title="Images">
+        {#snippet actions()}
+          <button
+            type="button"
+            title={activePath ? "Add image to note" : "Open a note to add images"}
+            aria-label="Add image to note"
+            disabled={!activePath}
+            onclick={addImage}
+            class="grid size-5 place-items-center rounded text-sidebar-foreground/60 outline-hidden hover:bg-sidebar-foreground/10 hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring disabled:opacity-40 disabled:hover:bg-transparent [&_svg]:size-4"
+          >
+            <ImagePlusIcon />
+          </button>
+        {/snippet}
+
+        {#each images as image (image.path)}
+          <TreeRow
+            label={image.name}
+            title={activePath ? `${image.path} — click to add to the note` : image.path}
+            onselect={() => insertImage(image.path)}
+          >
+            {#snippet icon()}
+              <img
+                src={imageSrc(null, `/${image.path}`)}
+                alt=""
+                loading="lazy"
+                class="size-5 rounded-sm bg-sidebar-foreground/10 object-cover"
+              />
+            {/snippet}
+            {#snippet actions()}
+              <NoteActionsMenu
+                path={image.path}
+                {activePath}
+                ondelete={() => requestDelete(image.path)}
+              />
+            {/snippet}
+          </TreeRow>
+        {:else}
+          <p class="px-2 py-1 text-sm text-sidebar-foreground/40">
+            Paste, drop or add an image to a note
+          </p>
+        {/each}
+      </SidebarSection>
     </Sidebar.Content>
     <Sidebar.Rail />
   </Sidebar.Root>
@@ -282,4 +361,10 @@
   kind={dialogKind}
   parent={dialogParent}
   oncreate={createEntry}
+/>
+
+<DeleteImageDialog
+  bind:open={deleteOpen}
+  path={deletePath}
+  ondelete={ondeleteimage}
 />

@@ -4,6 +4,7 @@ import {
   Heading1,
   Heading2,
   Heading3,
+  ImagePlus,
   List,
   ListChecks,
   ListOrdered,
@@ -93,6 +94,13 @@ export const slashItems: SlashItem[] = [
     icon: Minus,
     keywords: ["hr", "rule", "separator"],
     command: ({ editor, range }) => run(editor, range).setHorizontalRule().run(),
+  },
+  {
+    title: "Image",
+    description: "Add an image from your computer",
+    icon: ImagePlus,
+    keywords: ["img", "picture", "photo", "upload"],
+    command: ({ editor, range }) => run(editor, range).pickImage().run(),
   },
   {
     title: "Table",
