@@ -1,0 +1,141 @@
+/* Tiptap-specific styles layered on top of Tailwind Typography (`prose`). */
+
+.dotmd-editor .tiptap {
+  --tw-prose-body: var(--foreground);
+  --tw-prose-headings: var(--foreground);
+  --tw-prose-links: var(--foreground);
+  --tw-prose-bold: var(--foreground);
+  --tw-prose-code: var(--foreground);
+  --tw-prose-quotes: var(--muted-foreground);
+  --tw-prose-quote-borders: var(--border);
+  --tw-prose-hr: var(--border);
+  --tw-prose-bullets: var(--muted-foreground);
+  --tw-prose-counters: var(--muted-foreground);
+  --tw-prose-th-borders: var(--border);
+  --tw-prose-td-borders: var(--border);
+  caret-color: var(--foreground);
+}
+
+/* Placeholder on an empty document / current empty line */
+.dotmd-editor .tiptap p.is-editor-empty:first-child::before,
+.dotmd-editor .tiptap p.is-empty:only-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--muted-foreground);
+}
+
+/* Inline code: no backtick decorations from prose */
+.dotmd-editor .tiptap :not(pre) > code {
+  background: var(--muted);
+  border-radius: 0.3rem;
+  padding: 0.15em 0.35em;
+  font-weight: 500;
+}
+.dotmd-editor .tiptap :not(pre) > code::before,
+.dotmd-editor .tiptap :not(pre) > code::after {
+  content: none;
+}
+
+.dotmd-editor .tiptap pre {
+  background: var(--muted);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+}
+
+.dotmd-editor .tiptap blockquote p::before,
+.dotmd-editor .tiptap blockquote p::after {
+  content: none;
+}
+
+.dotmd-editor .tiptap a {
+  text-decoration-color: var(--muted-foreground);
+  text-underline-offset: 3px;
+}
+
+/* Task lists */
+.dotmd-editor .tiptap ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0.25rem;
+}
+.dotmd-editor .tiptap ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding-left: 0;
+}
+.dotmd-editor .tiptap ul[data-type="taskList"] li > label {
+  flex: 0 0 auto;
+  margin-top: 0.3em;
+  user-select: none;
+}
+.dotmd-editor .tiptap ul[data-type="taskList"] li > label input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+.dotmd-editor .tiptap ul[data-type="taskList"] li > div {
+  flex: 1 1 auto;
+}
+.dotmd-editor .tiptap ul[data-type="taskList"] li > div > p {
+  margin: 0;
+}
+.dotmd-editor .tiptap ul[data-type="taskList"] li[data-checked="true"] > div {
+  color: var(--muted-foreground);
+  text-decoration: line-through;
+}
+
+/* Tables */
+.dotmd-editor .tiptap .tableWrapper {
+  overflow-x: auto;
+}
+.dotmd-editor .tiptap table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+}
+.dotmd-editor .tiptap th,
+.dotmd-editor .tiptap td {
+  border: 1px solid var(--border);
+  padding: 0.4rem 0.6rem;
+  position: relative;
+  vertical-align: top;
+}
+.dotmd-editor .tiptap th {
+  background: var(--muted);
+  text-align: left;
+}
+.dotmd-editor .tiptap th p,
+.dotmd-editor .tiptap td p {
+  margin: 0;
+}
+.dotmd-editor .tiptap .selectedCell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: color-mix(in oklch, var(--ring) 20%, transparent);
+  pointer-events: none;
+}
+
+/* Images */
+.dotmd-editor .tiptap img {
+  display: inline-block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius);
+  margin: 0;
+}
+.dotmd-editor .tiptap img.ProseMirror-selectednode {
+  outline: 2px solid var(--ring);
+}
+
+/* Selected node (e.g. horizontal rule) */
+.dotmd-editor .tiptap hr.ProseMirror-selectednode {
+  border-top-color: var(--ring);
+}
+
+.dotmd-editor .tiptap .ProseMirror-gapcursor::after {
+  border-top-color: var(--foreground);
+}
