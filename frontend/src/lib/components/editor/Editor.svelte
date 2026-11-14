@@ -5,6 +5,7 @@
   import { createExtensions } from "$lib/editor/extensions";
   import { joinFrontmatter, splitFrontmatter } from "$lib/editor/frontmatter";
   import BubbleMenu from "./BubbleMenu.svelte";
+  import TableMenu from "./TableMenu.svelte";
   import "./editor.css";
 
   let {
@@ -22,6 +23,7 @@
 
   let element: HTMLDivElement;
   let bubbleElement = $state<HTMLDivElement>();
+  let tableMenuElement = $state<HTMLDivElement>();
   let editor = $state.raw<Editor | null>(null);
   let revision = $state(0);
   let frontmatter = "";
@@ -32,7 +34,7 @@
     frontmatter = fm;
     editor = new Editor({
       element,
-      extensions: createExtensions(bubbleElement!),
+      extensions: createExtensions(bubbleElement!, tableMenuElement!),
       content: body,
       contentType: "markdown",
       editable,
@@ -98,3 +100,4 @@
 
 <div bind:this={element} class="dotmd-editor"></div>
 <BubbleMenu {editor} {revision} bind:element={bubbleElement} />
+<TableMenu {editor} {revision} bind:element={tableMenuElement} />

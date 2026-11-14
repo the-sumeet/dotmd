@@ -59,6 +59,8 @@ function renderSlashMenu(): ReturnType<NonNullable<SuggestionOptions<SlashItem, 
 
 export const SlashCommand = Extension.create({
   name: "slashCommand",
+  // Above TableShortcut, so Enter in an open slash menu picks the item.
+  priority: 200,
 
   addProseMirrorPlugins() {
     return [

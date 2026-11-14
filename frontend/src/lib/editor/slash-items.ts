@@ -98,7 +98,7 @@ export const slashItems: SlashItem[] = [
     title: "Table",
     description: "3×3 table with header",
     icon: Table,
-    keywords: ["grid"],
+    keywords: ["grid", "|"],
     command: ({ editor, range }) =>
       run(editor, range).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
   },

@@ -63,8 +63,11 @@
   const btn = (on: boolean) => (on ? "bg-muted text-foreground" : "text-muted-foreground");
 </script>
 
+<!-- Starts hidden: the bubble menu plugin only hides elements it has shown, and
+     it overrides these inline styles when it positions the menu. -->
 <div
   bind:this={element}
+  style="visibility: hidden; position: absolute;"
   class="bg-popover text-popover-foreground flex items-center gap-0.5 rounded-lg border p-1 shadow-md"
 >
   {#if editor}
