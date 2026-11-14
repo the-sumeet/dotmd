@@ -21,6 +21,11 @@ type Tag struct {
 // (case-insensitive). Notes that cannot be read or parsed are skipped.
 func (s *NotesService) Tags() ([]Tag, error) {
 	root := s.Root()
+	// WalkDir does not follow a symlinked root (e.g. a notes folder linked
+	// into Dropbox or iCloud), while Tree does; resolve it so both agree.
+	if resolved, err := filepath.EvalSymlinks(root); err == nil {
+		root = resolved
+	}
 	byName := map[string]*Tag{}
 	err := filepath.WalkDir(root, func(abs string, d fs.DirEntry, err error) error {
 		if err != nil {
