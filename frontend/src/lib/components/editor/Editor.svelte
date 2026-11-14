@@ -12,6 +12,7 @@
 
   let {
     value = $bindable(""),
+    pending = $bindable(false),
     editable = true,
     notePath = null,
     onopenlink,
@@ -21,6 +22,8 @@
   }: {
     /** Full markdown of the note, including any YAML frontmatter. */
     value?: string;
+    /** True while edits are in the editor but not yet in `value` (see flush). */
+    pending?: boolean;
     /** When false the document is read-only (e.g. no note is open). */
     editable?: boolean;
     /** Follow a link (Cmd/Ctrl+click or the link menu), given its raw href. */
@@ -75,6 +78,7 @@
         },
       },
       onUpdate: () => {
+        pending = true;
         clearTimeout(syncTimer);
         syncTimer = setTimeout(flush, SYNC_DELAY_MS);
       },
@@ -104,6 +108,7 @@
     if (syncTimer === undefined) return;
     clearTimeout(syncTimer);
     syncTimer = undefined;
+    pending = false;
     if (editor && !editor.isDestroyed) value = joinFrontmatter(frontmatter, editor.getMarkdown());
   }
 
@@ -116,6 +121,7 @@
     if (!editor) return;
     clearTimeout(syncTimer);
     syncTimer = undefined;
+    pending = false;
     const { frontmatter: fm, body } = splitFrontmatter(markdown);
     frontmatter = fm;
     editor.commands.setContent(body, { contentType: "markdown", emitUpdate: false });
@@ -126,15 +132,6 @@
 
   export function focus() {
     editor?.commands.focus();
-  }
-
-  /**
-   * Let the user choose images to add at the caret. Not checked against
-   * `editable`, which may be about to change (leaving Markdown mode); images
-   * are only inserted if the editor is editable once they are saved.
-   */
-  export function pickImage() {
-    fileInput.click();
   }
 
   /** Insert an existing image at the caret, given its href from the note. */

@@ -14,7 +14,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -54,76 +53,6 @@ var extByType = map[string]string{
 
 func isImage(name string) bool {
 	return imageExts[strings.ToLower(filepath.Ext(name))]
-}
-
-// hasImages reports whether the folder at abs directly holds an image file.
-func hasImages(abs string) bool {
-	entries, err := os.ReadDir(abs)
-	if err != nil {
-		return false
-	}
-	for _, e := range entries {
-		if e.Type().IsRegular() && isImage(e.Name()) {
-			return true
-		}
-	}
-	return false
-}
-
-// Image is an image file in the notes folder. Path is root-relative and uses
-// forward slashes.
-type Image struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
-	Size int64  `json:"size"`
-}
-
-// Images lists every image under the notes root, sorted by path
-// (case-insensitive). Hidden files and folders are skipped.
-func (s *NotesService) Images() ([]Image, error) {
-	root := s.Root()
-	// Follow a symlinked root, like Tags.
-	if resolved, err := filepath.EvalSymlinks(root); err == nil {
-		root = resolved
-	}
-	images := []Image{}
-	err := filepath.WalkDir(root, func(abs string, d fs.DirEntry, err error) error {
-		if err != nil {
-			if abs == root {
-				return err
-			}
-			if d != nil && d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if abs != root && strings.HasPrefix(d.Name(), ".") {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if d.IsDir() || !d.Type().IsRegular() || !isImage(d.Name()) {
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			return nil
-		}
-		rel, err := filepath.Rel(root, abs)
-		if err != nil {
-			return nil
-		}
-		images = append(images, Image{Name: d.Name(), Path: filepath.ToSlash(rel), Size: info.Size()})
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	sort.Slice(images, func(i, j int) bool {
-		return strings.ToLower(images[i].Path) < strings.ToLower(images[j].Path)
-	})
-	return images, nil
 }
 
 // SaveImage saves base64-encoded image data (pasted, dropped or picked) to the

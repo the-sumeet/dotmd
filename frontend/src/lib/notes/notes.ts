@@ -82,14 +82,17 @@ export function notesRoot(): Promise<string> {
   return NotesService.Root();
 }
 
-/** First note in display order (depth-first), or null if there are none. */
-export function firstNote(nodes: Node[]): string | null {
-  for (const node of nodes) {
-    if (!node.isDir) return node.path;
-    const found = firstNote(node.children ?? []);
-    if (found) return found;
-  }
-  return null;
+/** Every note (not folder or image) in display order, depth-first. */
+export function notePaths(nodes: Node[]): string[] {
+  const out: string[] = [];
+  const walk = (list: Node[]) => {
+    for (const n of list) {
+      if (n.isDir) walk(n.children ?? []);
+      else if (!n.isImage) out.push(n.path);
+    }
+  };
+  walk(nodes);
+  return out;
 }
 
 /** Display name for a note: file name without its markdown extension. */

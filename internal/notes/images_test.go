@@ -9,8 +9,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
-	"strings"
 	"testing"
 )
 
@@ -122,20 +122,8 @@ func TestDownloadImage(t *testing.T) {
 	}
 }
 
-func TestImagesAndDelete(t *testing.T) {
-	s := newTestService(t, "n.md", "assets/b.png", "Sub/assets/A.JPG", ".hidden/c.png", "d.txt", "Sub/x.md")
-	got, err := s.Images()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var paths []string
-	for _, img := range got {
-		paths = append(paths, img.Path)
-	}
-	if want := "assets/b.png,Sub/assets/A.JPG"; strings.Join(paths, ",") != want {
-		t.Fatalf("Images = %v, want %s", paths, want)
-	}
-
+func TestDeleteImage(t *testing.T) {
+	s := newTestService(t, "n.md", "assets/b.png", "Sub/assets/A.JPG", "d.txt", "Sub/x.md")
 	for _, p := range []string{"n.md", "../x.png", "d.txt", "missing.png"} {
 		if err := s.DeleteImage(p); err == nil {
 			t.Errorf("DeleteImage(%q) succeeded, want error", p)
@@ -189,31 +177,27 @@ func TestFileMiddleware(t *testing.T) {
 	}
 }
 
-func TestTreeHidesEmptyAssets(t *testing.T) {
-	s := newTestService(t, "a.md", "assets/x.png", "Sub/assets/notes.md", "Mine/assets/notes.txt")
-	// A user-made, still-empty "assets" folder.
-	if _, err := s.CreateFolder("Empty/assets"); err != nil {
-		t.Fatal(err)
-	}
+func TestTreeShowsImages(t *testing.T) {
+	s := newTestService(t, "a.md", "assets/x.png", "Sub/loose.JPG", "Sub/notes.txt", ".hidden/c.png")
 	nodes, err := s.Tree()
 	if err != nil {
 		t.Fatal(err)
 	}
-	paths := map[string]bool{}
+	images := map[string]bool{}
 	var collect func([]Node)
 	collect = func(ns []Node) {
 		for _, n := range ns {
-			paths[n.Path] = true
+			if n.IsImage {
+				images[n.Path] = true
+			}
 			collect(n.Children)
 		}
 	}
 	collect(nodes)
-	for _, p := range []string{"Sub/assets", "Mine/assets", "Empty/assets", "a.md"} {
-		if !paths[p] {
-			t.Errorf("Tree is missing %s", p)
-		}
-	}
-	if paths["assets"] {
-		t.Error("Tree shows the image-only assets folder")
+	// Images show wherever they are, attached ("assets") or not; other files
+	// and hidden folders don't.
+	want := map[string]bool{"assets/x.png": true, "Sub/loose.JPG": true}
+	if !reflect.DeepEqual(images, want) {
+		t.Errorf("images in Tree = %v, want %v", images, want)
 	}
 }

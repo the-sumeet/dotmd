@@ -34,7 +34,7 @@ func TestResolve(t *testing.T) {
 func TestTree(t *testing.T) {
 	root := t.TempDir()
 	for _, f := range []string{
-		"b.md", "A.md", "notes.txt", ".hidden.md", "z/inner.markdown", "z/skip.png", ".git/x.md", "empty/",
+		"b.md", "A.md", "notes.txt", ".hidden.md", "z/inner.markdown", "z/pic.png", ".git/x.md", "empty/",
 	} {
 		p := filepath.Join(root, f)
 		if f[len(f)-1] == '/' {
@@ -59,6 +59,7 @@ func TestTree(t *testing.T) {
 		{Name: "empty", Path: "empty", IsDir: true, Children: []Node{}},
 		{Name: "z", Path: "z", IsDir: true, Children: []Node{
 			{Name: "inner.markdown", Path: "z/inner.markdown", Children: []Node{}},
+			{Name: "pic.png", Path: "z/pic.png", IsImage: true, Children: []Node{}},
 		}},
 		{Name: "A.md", Path: "A.md", Children: []Node{}},
 		{Name: "b.md", Path: "b.md", Children: []Node{}},

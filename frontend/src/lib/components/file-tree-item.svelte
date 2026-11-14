@@ -1,7 +1,8 @@
 <!--
-  One entry of the Files tree: a note, or a folder that renders its children
-  (recursively) when expanded. Every row has a "+" menu for creating a note or
-  folder in the folder the row belongs to; note rows also get a "⋯" menu.
+  One entry of the Files tree: a note, an image, or a folder that renders its
+  children (recursively) when expanded. Every row has a "+" menu for creating a
+  note or folder in the folder the row belongs to; notes and images also get a
+  "⋯" menu. Clicking an image adds it to the open note.
 -->
 <script lang="ts">
   import FileTextIcon from "@lucide/svelte/icons/file-text";
@@ -9,6 +10,7 @@
   import FolderOpenIcon from "@lucide/svelte/icons/folder-open";
   import type { SvelteSet } from "svelte/reactivity";
   import { noteTitle, type EntryKind, type Node } from "$lib/notes/notes";
+  import { imageSrc } from "$lib/notes/images";
   import NewEntryMenu from "./new-entry-menu.svelte";
   import NoteActionsMenu from "./note-actions-menu.svelte";
   import TreeRow from "./tree-row.svelte";
@@ -21,6 +23,8 @@
     expanded,
     onopen,
     onnew,
+    oninsertimage,
+    ondeleteimage,
   }: {
     node: Node;
     depth?: number;
@@ -30,7 +34,23 @@
     onopen: (path: string) => void;
     /** Ask to create a note or folder inside `parent` ("" is the root). */
     onnew: (kind: EntryKind, parent: string) => void;
+    /** Add an image (root-relative path) to the open note. */
+    oninsertimage: (path: string) => void;
+    /** Ask to delete an image (e.g. open a confirm dialog). */
+    ondeleteimage: (path: string) => void;
   } = $props();
+
+  const title = $derived(
+    !node.isImage
+      ? node.path
+      : `${node.path} — ${activePath ? "click to add to the note" : "open a note to add it"}`,
+  );
+
+  function select() {
+    if (node.isDir) toggle();
+    else if (node.isImage) oninsertimage(node.path);
+    else onopen(node.path);
+  }
 
   const isOpen = $derived(node.isDir && expanded.has(node.path));
 
@@ -47,16 +67,23 @@
 
 <TreeRow
   {depth}
-  label={node.isDir ? node.name : noteTitle(node.path)}
-  title={node.path}
+  label={node.isDir || node.isImage ? node.name : noteTitle(node.path)}
+  {title}
   active={!node.isDir && node.path === activePath}
   expandable={node.isDir}
   expanded={isOpen}
   ontoggle={toggle}
-  onselect={node.isDir ? toggle : () => onopen(node.path)}
+  onselect={select}
 >
   {#snippet icon()}
-    {#if !node.isDir}
+    {#if node.isImage}
+      <img
+        src={imageSrc(null, `/${node.path}`)}
+        alt=""
+        loading="lazy"
+        class="size-4 rounded-sm bg-sidebar-foreground/10 object-cover"
+      />
+    {:else if !node.isDir}
       <FileTextIcon />
     {:else if isOpen}
       <FolderOpenIcon />
@@ -70,7 +97,9 @@
       onnote={() => onnew("note", parent)}
       onfolder={() => onnew("folder", parent)}
     />
-    {#if !node.isDir}
+    {#if node.isImage}
+      <NoteActionsMenu path={node.path} {activePath} ondelete={() => ondeleteimage(node.path)} />
+    {:else if !node.isDir}
       <NoteActionsMenu path={node.path} {activePath} />
     {/if}
   {/snippet}
@@ -78,7 +107,16 @@
 
 {#if isOpen}
   {#each node.children ?? [] as child (child.path)}
-    <Self node={child} depth={depth + 1} {activePath} {expanded} {onopen} {onnew} />
+    <Self
+      node={child}
+      depth={depth + 1}
+      {activePath}
+      {expanded}
+      {onopen}
+      {onnew}
+      {oninsertimage}
+      {ondeleteimage}
+    />
   {:else}
     <p
       class="flex h-7 items-center text-sm text-sidebar-foreground/40"

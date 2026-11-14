@@ -15,12 +15,13 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// Node is one entry in the notes tree. Path is relative to the notes root and
-// always uses forward slashes.
+// Node is one entry in the notes tree: a folder, a note or an image. Path is
+// relative to the notes root and always uses forward slashes.
 type Node struct {
 	Name     string `json:"name"`
 	Path     string `json:"path"`
 	IsDir    bool   `json:"isDir"`
+	IsImage  bool   `json:"isImage"`
 	Children []Node `json:"children"`
 }
 
@@ -58,8 +59,10 @@ func (s *NotesService) Root() string {
 	return s.root
 }
 
-// Tree lists the folders and markdown files under the root. Hidden entries
-// (names starting with ".") are skipped. Folders sort before files.
+// Tree lists the folders, markdown notes and images under the root; image
+// nodes have IsImage set, so callers must not treat every file as a note.
+// Hidden entries (names starting with ".") are skipped. Folders sort before
+// files.
 func (s *NotesService) Tree() ([]Node, error) {
 	return walk(s.Root(), "")
 }
@@ -223,15 +226,11 @@ func walk(root, rel string) ([]Node, error) {
 			if err != nil {
 				children = []Node{}
 			}
-			// Image folders beside notes (see SaveImage) are not shown unless
-			// they also hold notes. An "assets" folder without images (e.g.
-			// one the user just created) still shows.
-			if name == assetsDir && len(children) == 0 && hasImages(filepath.Join(root, filepath.FromSlash(path))) {
-				continue
-			}
 			nodes = append(nodes, Node{Name: name, Path: path, IsDir: true, Children: children})
 		} else if e.Type().IsRegular() && isMarkdown(name) {
 			nodes = append(nodes, Node{Name: name, Path: path, Children: []Node{}})
+		} else if e.Type().IsRegular() && isImage(name) {
+			nodes = append(nodes, Node{Name: name, Path: path, IsImage: true, Children: []Node{}})
 		}
 	}
 	sort.SliceStable(nodes, func(i, j int) bool {

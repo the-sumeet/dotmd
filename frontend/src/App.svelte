@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { Browser, Events } from "@wailsio/runtime";
-  import { FileText, PenLine } from "@lucide/svelte";
+  import { Check, FilePlus, LoaderCircle, PenLine, Search, X } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import Editor from "$lib/components/editor/Editor.svelte";
   import { splitFrontmatter } from "$lib/editor/frontmatter";
@@ -10,13 +10,16 @@
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
   import { Separator } from "$lib/components/ui/separator/index.js";
   import AppSidebar from "$lib/components/app-sidebar.svelte";
+  import QuickOpen from "$lib/components/quick-open.svelte";
+  import { dialogOpen, isMac, isMod, modKey, shortcutKey } from "$lib/platform";
+  import { IsMobile } from "$lib/hooks/is-mobile.svelte";
   import { Service as Lifecycle } from "../bindings/dotmd/internal/lifecycle";
   import {
     createFolder,
     createNote,
-    firstNote,
     loadTags,
     loadTree,
+    notePaths,
     noteTitle,
     readNote,
     resolveLink,
@@ -32,20 +35,21 @@
     baseName,
     deleteImage,
     downloadImage,
-    loadImages,
     relativeHref,
     saveImageFile,
-    type Image,
   } from "$lib/notes/images";
 
   type Mode = "edit" | "markdown";
 
-  /** Saving several images rescans the folder once, this long after the last. */
-  const IMAGES_REFRESH_DELAY_MS = 300;
+  /** Saving several images rescans the files once, this long after the last. */
+  const TREE_REFRESH_DELAY_MS = 300;
   /** Wait this long after the last change before writing the note to disk. */
   const SAVE_DELAY_MS = 500;
   /** Sent by the Go side before quitting; see internal/lifecycle. */
   const FLUSH_EVENT = "dotmd:flush";
+  /** Recently opened notes kept for the quick switcher. */
+  const RECENT_LIMIT = 8;
+  const RECENT_KEY = "dotmd:recent";
 
   /** The open note as plain markdown — the single source of truth. */
   let markdown = $state("");
@@ -56,7 +60,6 @@
 
   let tree = $state<Node[]>([]);
   let tags = $state<Tag[]>([]);
-  let images = $state<Image[]>([]);
   /** Root-relative path of the open note. */
   let currentPath = $state<string | null>(null);
   /** True while switching notes; editing is paused so no keystroke is lost. */
@@ -64,17 +67,53 @@
   /** Last save/open problem, shown in the note header. */
   let notice = $state("");
   /** Content last written to (or read from) disk. */
-  let lastSaved: string | null = null;
+  let lastSaved = $state<string | null>(null);
+  /** True while a write is in flight. */
+  let saving = $state(false);
+  /** The last write failed; edits stay unsaved until a save succeeds. */
+  let saveFailed = $state(false);
+  /** Edits typed in the rich editor that haven't reached `markdown` yet. */
+  let editorPending = $state(false);
+  const mobile = new IsMobile();
+  /** True once the notes folder has been read (or failed to). */
+  let loaded = $state(false);
+  let quickOpen = $state(false);
+  /** Notes opened lately, most recent first; remembered across launches. */
+  let recent = $state<string[]>(loadRecent());
+  let sidebar: AppSidebar;
+  /** Desktop sidebar shown; the shadcn sidebar keeps this in a cookie. */
+  let sidebarOpen = $state(!document.cookie.includes("sidebar_state=false"));
+  let scroller = $state<HTMLElement>();
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
-  let imagesTimer: ReturnType<typeof setTimeout> | undefined;
+  let treeTimer: ReturnType<typeof setTimeout> | undefined;
   /** Saves run one after another, so an older write never lands last. */
   let saveQueue: Promise<boolean> = Promise.resolve(true);
   /** Bumped per openNote call so only the latest click wins. */
   let openToken = 0;
 
   const canEdit = $derived(currentPath !== null && !opening);
-  const fileName = $derived(currentPath?.split("/").pop() ?? "No note open");
   const folders = $derived(currentPath?.split("/").slice(0, -1) ?? []);
+
+  /** Every note path, in sidebar order, for the quick switcher. */
+  const allNotes = $derived(notePaths(tree));
+
+  function loadRecent(): string[] {
+    try {
+      const v = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
+      return Array.isArray(v) ? v.filter((p) => typeof p === "string") : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function remember(path: string) {
+    recent = [path, ...recent.filter((p) => p !== path)].slice(0, RECENT_LIMIT);
+    try {
+      localStorage.setItem(RECENT_KEY, JSON.stringify(recent));
+    } catch {
+      // Recents are a convenience; private storage just means none are kept.
+    }
+  }
 
   function errorText(err: unknown) {
     return err instanceof Error ? err.message : String(err);
@@ -101,6 +140,7 @@
     saveTimer = undefined;
     saveQueue = saveQueue.then(writeIfChanged).catch((err) => {
       notice = `Not saved: ${errorText(err)}`;
+      saveFailed = true;
       return false;
     });
     return saveQueue;
@@ -114,13 +154,18 @@
     const content = markdown;
     if (!path || content === lastSaved) return true;
     const previous = lastSaved;
+    saving = true;
     try {
       await writeNote(path, content);
     } catch (err) {
       notice = `Not saved: ${errorText(err)}`;
+      saveFailed = true;
       return false;
+    } finally {
+      saving = false;
     }
     lastSaved = content;
+    saveFailed = false;
     notice = "";
     if (previous === null || frontmatterOf(previous) !== frontmatterOf(content)) {
       void updateTags(path, content);
@@ -149,18 +194,18 @@
     }
   }
 
-  async function refreshImages() {
+  async function refreshTree() {
     try {
-      images = await loadImages();
+      tree = await loadTree();
     } catch (err) {
-      console.error("Failed to load images", err);
+      console.error("Failed to load files", err);
     }
   }
 
-  /** Refresh the sidebar's images once a burst of saves (a drop of many files) ends. */
-  function scheduleImagesRefresh() {
-    clearTimeout(imagesTimer);
-    imagesTimer = setTimeout(refreshImages, IMAGES_REFRESH_DELAY_MS);
+  /** Show new images in the sidebar once a burst of saves (a drop of many files) ends. */
+  function scheduleTreeRefresh() {
+    clearTimeout(treeTimer);
+    treeTimer = setTimeout(refreshTree, TREE_REFRESH_DELAY_MS);
   }
 
   /** The open note, for saving an image beside it. */
@@ -172,14 +217,14 @@
   /** Save a pasted, dropped or picked image beside the open note. */
   async function uploadImage(file: File): Promise<string> {
     const href = await saveImageFile(noteForImages(), file);
-    scheduleImagesRefresh();
+    scheduleTreeRefresh();
     return href;
   }
 
   /** Keep a local copy of a pasted image URL beside the open note. */
   async function fetchImage(url: string): Promise<string> {
     const href = await downloadImage(noteForImages(), url);
-    scheduleImagesRefresh();
+    scheduleTreeRefresh();
     return href;
   }
 
@@ -192,15 +237,9 @@
     editor.insertImage(relativeHref(currentPath!, path), baseName(path));
   }
 
-  function pickImage() {
-    if (!canEdit) return;
-    if (mode !== "edit") setMode("edit");
-    editor.pickImage();
-  }
-
   async function removeImage(path: string) {
     await deleteImage(path);
-    await refreshImages();
+    await refreshTree();
   }
 
   async function openNote(path: string) {
@@ -223,11 +262,14 @@
       }
       if (token !== openToken) return;
       lastSaved = content;
+      saveFailed = false;
       markdown = content;
       currentPath = path;
       editor.setMarkdown(content);
       sourceEdited = false;
       notice = "";
+      remember(path);
+      if (scroller) scroller.scrollTop = 0;
     } finally {
       if (token === openToken) opening = false;
     }
@@ -269,11 +311,12 @@
           tree = await loadTree();
         }
         void refreshTags();
-        void refreshImages();
-        const first = firstNote(tree);
+        const first = notePaths(tree)[0];
         if (first) await openNote(first);
       } catch (err) {
         notice = `Couldn't load notes: ${errorText(err)}`;
+      } finally {
+        loaded = true;
       }
     })();
 
@@ -296,10 +339,54 @@
     });
 
     return () => {
-      clearTimeout(imagesTimer);
+      clearTimeout(treeTimer);
       document.removeEventListener("visibilitychange", onVisibility);
       offFlush();
     };
+  });
+
+  /**
+   * App-wide shortcuts. Editor shortcuts (⌘B, ⌘I, …) are left alone, and
+   * while a dialog is open only ⌘S works, so its contents aren't swapped
+   * or covered.
+   */
+  function onKeydown(e: KeyboardEvent) {
+    if (!isMod(e)) return;
+    const key = shortcutKey(e);
+    // Shift is allowed for "/" only, where layouts need it to type one.
+    if (e.shiftKey && key !== "/") return;
+    if (key === "s") {
+      e.preventDefault();
+      void save();
+      return;
+    }
+    if (dialogOpen()) return;
+    switch (key) {
+      case "p":
+      case "o":
+        quickOpen = true;
+        break;
+      case "n":
+        sidebar.newNote();
+        break;
+      case "/":
+        if (!canEdit) return;
+        setMode(mode === "edit" ? "markdown" : "edit");
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+  }
+
+  type SaveStatus = "saving" | "saved" | "unsaved" | null;
+  const saveStatus = $derived.by<SaveStatus>(() => {
+    if (!currentPath || notice) return null;
+    if (saving) return "saving";
+    const dirty = editorPending || markdown !== lastSaved;
+    if (!dirty) return "saved";
+    // A failed save isn't retried until the next edit, so don't claim one is running.
+    return saveFailed ? "unsaved" : "saving";
   });
 
   // Autosave once edits pause.
@@ -327,108 +414,175 @@
   });
 </script>
 
-<Sidebar.Provider style="--sidebar-width: 350px;">
-  <AppSidebar {tree} {tags} {images} activePath={currentPath} onopen={openNote}
+<svelte:window onkeydown={onKeydown} />
+
+<Sidebar.Provider bind:open={sidebarOpen} style="--sidebar-width: 280px;">
+  <AppSidebar
+    bind:this={sidebar}
+    {tree}
+    {tags}
+    activePath={currentPath}
+    onopen={openNote}
     oncreate={createEntry}
-    onaddimage={pickImage}
     oninsertimage={insertImage}
     ondeleteimage={removeImage}
+    onsearch={() => (quickOpen = true)}
   />
-  <Sidebar.Inset>
+  <Sidebar.Inset class="h-svh overflow-hidden">
     <header
-      class="sticky top-0 flex shrink-0 items-center gap-2 border-b bg-background p-4"
+      class={[
+        "flex h-12 shrink-0 items-center gap-2 border-b bg-background px-3",
+        // Clear the macOS window buttons whenever the sidebar isn't beside
+        // the header: collapsed, or a sheet in a narrow window.
+        isMac && (!sidebarOpen || mobile.current) && "ps-20",
+      ]}
+      style="--wails-draggable: drag"
     >
-      <Sidebar.Trigger class="-ms-1" />
-      <Separator
-        orientation="vertical"
-        class="me-2 data-vertical:h-4 data-vertical:self-auto"
+      <Sidebar.Trigger
+        class="text-muted-foreground"
+        title="Toggle sidebar ({modKey}\)"
+        style="--wails-draggable: no-drag"
       />
-      <Breadcrumb.Root>
-        <Breadcrumb.List>
+      <Separator orientation="vertical" class="data-vertical:h-4 data-vertical:self-auto" />
+
+      <Breadcrumb.Root class="min-w-0 ps-1">
+        <Breadcrumb.List class="flex-nowrap">
           {#each folders as folder, i (i)}
-            <Breadcrumb.Item class="hidden md:block">
+            <Breadcrumb.Item class="hidden md:inline-flex">
               <Breadcrumb.Page class="text-muted-foreground">{folder}</Breadcrumb.Page>
             </Breadcrumb.Item>
             <Breadcrumb.Separator class="hidden md:block" />
           {/each}
-          <Breadcrumb.Item>
-            <Breadcrumb.Page
-              >{currentPath ? noteTitle(currentPath) : "No note open"}</Breadcrumb.Page
-            >
+          <Breadcrumb.Item class="min-w-0">
+            <Breadcrumb.Page class="truncate font-medium" title={currentPath ?? undefined}>
+              {currentPath ? noteTitle(currentPath) : "dotmd"}
+            </Breadcrumb.Page>
           </Breadcrumb.Item>
         </Breadcrumb.List>
       </Breadcrumb.Root>
-    </header>
-    <div class="flex flex-1 flex-col gap-4 p-4">
-      <div class="flex h-screen flex-col">
-        <header
-          class="bg-background/80 sticky top-0 z-10 flex h-12 shrink-0 items-center justify-between gap-4 border-b pr-3 pl-20 backdrop-blur"
-          style="--wails-draggable: drag"
-        >
-          <div class="flex min-w-0 items-center gap-2 text-sm">
-            <FileText class="text-muted-foreground size-4 shrink-0" />
-            <span class="truncate font-medium">{fileName}</span>
-            <span class="text-muted-foreground text-xs">{words} words</span>
-            {#if notice}
-              <span class="truncate text-xs text-destructive" title={notice}>{notice}</span>
-            {/if}
-          </div>
 
+      <div class="ms-auto flex min-w-0 items-center gap-3 text-xs text-muted-foreground">
+        {#if notice}
           <div
-            class="bg-muted flex items-center gap-0.5 rounded-lg p-0.5"
+            role="alert"
+            class="flex min-w-0 items-center gap-1 rounded-md bg-destructive/10 py-0.5 ps-2 pe-0.5 text-destructive"
             style="--wails-draggable: no-drag"
           >
-            <Button
-              size="xs"
-              variant={mode === "edit" ? "outline" : "ghost"}
-              aria-pressed={mode === "edit"}
-              onclick={() => setMode("edit")}
+            <span class="truncate" title={notice}>{notice}</span>
+            <button
+              type="button"
+              aria-label="Dismiss"
+              class="grid size-5 shrink-0 place-items-center rounded hover:bg-destructive/15"
+              onclick={() => (notice = "")}
             >
-              <PenLine data-icon="inline-start" /> Edit
-            </Button>
-            <Button
-              size="xs"
-              variant={mode === "markdown" ? "outline" : "ghost"}
-              aria-pressed={mode === "markdown"}
-              onclick={() => setMode("markdown")}
-            >
-              <span class="font-mono text-[0.7rem]" data-icon="inline-start"
-                >MD</span
-              > Markdown
-            </Button>
+              <X class="size-3.5" />
+            </button>
           </div>
-        </header>
-
-        <main class="flex-1 overflow-y-auto">
-          <div class="mx-auto w-full max-w-3xl px-6 py-10 sm:px-10">
-            <!-- Kept mounted while hidden so editor state (history, selection) survives toggling. -->
-            <div class:hidden={mode !== "edit"}>
-              <Editor
-                bind:this={editor}
-                bind:value={markdown}
-                editable={canEdit && mode === "edit"}
-                notePath={currentPath}
-                onopenlink={followLink}
-                onuploadimage={uploadImage}
-                ondownloadimage={fetchImage}
-                onerror={(message) => (notice = message)}
-              />
-            </div>
-
-            {#if mode === "markdown"}
-              <textarea
-                bind:this={source}
-                bind:value={markdown}
-                readonly={!canEdit}
-                oninput={() => (sourceEdited = true)}
-                spellcheck="false"
-                aria-label="Markdown source"
-                class="text-foreground block min-h-[60vh] w-full resize-none overflow-hidden bg-transparent font-mono text-sm leading-relaxed outline-none"
-              ></textarea>
+        {:else if saveStatus}
+          <span class="flex shrink-0 items-center gap-1" aria-live="polite">
+            {#if saveStatus === "saving"}
+              <LoaderCircle class="size-3 animate-spin" /> Saving…
+            {:else if saveStatus === "unsaved"}
+              <span class="text-destructive">Not saved</span>
+              <button
+                type="button"
+                class="rounded px-1 font-medium text-foreground hover:bg-muted"
+                style="--wails-draggable: no-drag"
+                onclick={() => void save()}
+              >
+                Retry
+              </button>
+            {:else}
+              <Check class="size-3" /> Saved
             {/if}
+          </span>
+        {/if}
+        {#if currentPath}
+          <span class="hidden shrink-0 tabular-nums sm:inline">
+            {words.toLocaleString()} {words === 1 ? "word" : "words"}
+          </span>
+        {/if}
+      </div>
+
+      {#if currentPath}
+        <div
+          class="flex shrink-0 items-center gap-0.5 rounded-lg bg-muted p-0.5"
+          style="--wails-draggable: no-drag"
+        >
+          <Button
+            size="xs"
+            variant={mode === "edit" ? "outline" : "ghost"}
+            aria-pressed={mode === "edit"}
+            title="Rich editor ({modKey}/)"
+            onclick={() => setMode("edit")}
+          >
+            <PenLine data-icon="inline-start" /> <span class="max-sm:sr-only">Edit</span>
+          </Button>
+          <Button
+            size="xs"
+            variant={mode === "markdown" ? "outline" : "ghost"}
+            aria-pressed={mode === "markdown"}
+            title="Markdown source ({modKey}/)"
+            onclick={() => setMode("markdown")}
+          >
+            <span class="font-mono text-[0.7rem]" data-icon="inline-start">MD</span>
+            <span class="max-sm:sr-only">Markdown</span>
+          </Button>
+        </div>
+      {/if}
+    </header>
+
+    <div bind:this={scroller} class="flex-1 overflow-y-auto">
+      <div class="mx-auto w-full max-w-3xl px-6 py-10 sm:px-12">
+        <!-- Kept mounted while hidden so editor state (history, selection) survives toggling. -->
+        <div class:hidden={mode !== "edit" || !currentPath}>
+          <Editor
+            bind:this={editor}
+            bind:value={markdown}
+            bind:pending={editorPending}
+            editable={canEdit && mode === "edit"}
+            notePath={currentPath}
+            onopenlink={followLink}
+            onuploadimage={uploadImage}
+            ondownloadimage={fetchImage}
+            onerror={(message) => (notice = message)}
+          />
+        </div>
+
+        {#if mode === "markdown" && currentPath}
+          <textarea
+            bind:this={source}
+            bind:value={markdown}
+            readonly={!canEdit}
+            oninput={() => (sourceEdited = true)}
+            spellcheck="false"
+            aria-label="Markdown source"
+            class="block min-h-[60vh] w-full resize-none overflow-hidden bg-transparent font-mono text-sm leading-relaxed text-foreground outline-none"
+          ></textarea>
+        {/if}
+
+        {#if loaded && !currentPath}
+          <div class="flex flex-col items-center gap-4 pt-[18vh] text-center">
+            <p class="text-sm text-muted-foreground">
+              {allNotes.length ? "Pick a note from the sidebar, or" : "You don't have any notes yet."}
+            </p>
+            <div class="flex flex-wrap justify-center gap-2">
+              <Button variant="outline" size="sm" onclick={() => sidebar.newNote()}>
+                <FilePlus data-icon="inline-start" /> New note
+                <kbd class="ms-1 font-sans text-muted-foreground">{modKey}N</kbd>
+              </Button>
+              {#if allNotes.length}
+                <Button variant="outline" size="sm" onclick={() => (quickOpen = true)}>
+                  <Search data-icon="inline-start" /> Go to note
+                  <kbd class="ms-1 font-sans text-muted-foreground">{modKey}P</kbd>
+                </Button>
+              {/if}
+            </div>
           </div>
-        </main>
+        {/if}
       </div>
     </div>
   </Sidebar.Inset>
 </Sidebar.Provider>
+
+<QuickOpen bind:open={quickOpen} notes={allNotes} {recent} onopen={openNote} />

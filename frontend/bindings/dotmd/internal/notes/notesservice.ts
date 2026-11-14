@@ -50,14 +50,6 @@ export function DownloadImage(note: string, rawURL: string): $CancellablePromise
 }
 
 /**
- * Images lists every image under the notes root, sorted by path
- * (case-insensitive). Hidden files and folders are skipped.
- */
-export function Images(): $CancellablePromise<$models.Image[] | null> {
-    return $Call.ByID(847599719);
-}
-
-/**
  * LinkPath returns the href that links the note at from to the note at to,
  * relative to from's folder (e.g. "Projects/A.md" -> "Plan.md" is "../Plan.md").
  * Both paths are root-relative. Spaces are kept; "%", "#" and "?" are escaped
@@ -120,8 +112,10 @@ export function TagsOf(content: string): $CancellablePromise<string[] | null> {
 }
 
 /**
- * Tree lists the folders and markdown files under the root. Hidden entries
- * (names starting with ".") are skipped. Folders sort before files.
+ * Tree lists the folders, markdown notes and images under the root; image
+ * nodes have IsImage set, so callers must not treat every file as a note.
+ * Hidden entries (names starting with ".") are skipped. Folders sort before
+ * files.
  */
 export function Tree(): $CancellablePromise<$models.Node[] | null> {
     return $Call.ByID(915722529);

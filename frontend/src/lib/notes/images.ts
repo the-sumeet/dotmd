@@ -1,19 +1,12 @@
 // Image attachments: thin wrapper over the Go bindings, plus the mapping from
 // an image's href in a note to the URL the webview loads it from.
 import { NotesService } from "../../../bindings/dotmd/internal/notes";
-import type { Image } from "../../../bindings/dotmd/internal/notes";
 import { isExternalLink } from "./links";
-
-export type { Image };
 
 /** URL prefix the Go side serves notes-folder images under (notes.FileRoute). */
 const FILE_ROUTE = "/notes-file/";
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i;
-
-export async function loadImages(): Promise<Image[]> {
-  return (await NotesService.Images()) ?? [];
-}
 
 /** Delete an image file. Links to it in notes are left as they are. */
 export function deleteImage(path: string): Promise<void> {
