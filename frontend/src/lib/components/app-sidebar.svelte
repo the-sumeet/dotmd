@@ -78,7 +78,7 @@
     tags?: Tag[];
     /** Root-relative path of the open note. */
     activePath?: string | null;
-    onopen?: (path: string) => void;
+    onopen?: (path: string) => void | Promise<void>;
     /**
      * Create a note or folder from a root-relative name (may contain "/").
      * Resolves to the created path; rejects with a user-facing message.
@@ -102,12 +102,24 @@
   async function createEntry(kind: EntryKind, path: string) {
     if (!oncreate) return;
     const created = await oncreate(kind, path);
+    // A new note opens right away; show it instead of the sheet.
+    if (kind === "note" && sidebar.isMobile && activePath === created) sidebar.setOpenMobile(false);
     reveal(created);
     if (kind === "folder") expanded.add(created);
   }
 
   let activeItem = $state(data.navMain[0]);
   const sidebar = useSidebar();
+
+  /**
+   * Open a note; on phones also close the sidebar sheet so the note is
+   * visible. The sheet stays open if the switch failed (e.g. the current note
+   * could not be saved), so the user can retry.
+   */
+  async function openNote(path: string) {
+    await onopen?.(path);
+    if (sidebar.isMobile && activePath === path) sidebar.setOpenMobile(false);
+  }
 
   /** Paths of expanded folders. */
   const expanded = new SvelteSet<string>();
@@ -137,9 +149,10 @@
   <!-- This is the first sidebar -->
   <!-- We disable collapsible and adjust width to icon. -->
   <!-- This will make the sidebar appear as icons. -->
+  <!-- Hidden on phones, where the narrow sheet is better spent on the files. -->
   <Sidebar.Root
     collapsible="none"
-    class="!w-[calc(var(--sidebar-width-icon)_+_1px)] border-e"
+    class="hidden !w-[calc(var(--sidebar-width-icon)_+_1px)] border-e md:flex"
   >
     <Sidebar.Header>
       <Sidebar.Menu>
@@ -197,7 +210,7 @@
   </Sidebar.Root>
 
 
-  <Sidebar.Root collapsible="none" class="hidden flex-1 md:flex">
+  <Sidebar.Root collapsible="none" class="flex flex-1">
     <!-- Clear the macOS window buttons and let this strip drag the window. -->
     <div class="h-9 shrink-0" style="--wails-draggable: drag"></div>
     <Sidebar.Content>
@@ -215,7 +228,7 @@
             {node}
             {activePath}
             {expanded}
-            onopen={(path) => onopen?.(path)}
+            onopen={openNote}
             onnew={requestNew}
           />
         {:else}
@@ -245,7 +258,7 @@
                 label={noteTitle(path)}
                 title={path}
                 active={path === activePath}
-                onselect={() => onopen?.(path)}
+                onselect={() => openNote(path)}
               >
                 {#snippet icon()}<FileTextIcon />{/snippet}
               </TreeRow>
