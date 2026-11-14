@@ -183,6 +183,9 @@ tasks:
 
   run:
     cmds:
+      # ios:run builds a flat simulator bundle at the same path; leftovers in
+      # the bundle root make codesign fail ("unsealed contents present").
+      - rm -rf "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app"
       - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/MacOS"
       - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/Resources"
       - cp build/darwin/icons.icns "{{.BIN_DIR}}/{{.APP_NAME}}.dev.app/Contents/Resources"
