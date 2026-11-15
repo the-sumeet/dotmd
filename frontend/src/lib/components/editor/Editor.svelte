@@ -73,7 +73,7 @@
       editable,
       editorProps: {
         attributes: {
-          class: "prose prose-neutral dark:prose-invert max-w-none min-h-[60vh] focus:outline-none",
+          class: "prose max-w-none min-h-[60vh] focus:outline-none",
           spellcheck: "true",
         },
       },

@@ -1,19 +1,51 @@
-/* Tiptap-specific styles layered on top of Tailwind Typography (`prose`). */
+/* Tiptap-specific styles layered on top of Tailwind Typography (`prose`).
+   Every prose color comes from the theme tokens in app.css, so light and dark
+   both follow the palette (no prose-neutral / prose-invert). */
 
 .dotmd-editor .tiptap {
   --tw-prose-body: var(--foreground);
   --tw-prose-headings: var(--foreground);
-  --tw-prose-links: var(--foreground);
+  --tw-prose-lead: var(--muted-foreground);
+  --tw-prose-links: var(--brand);
   --tw-prose-bold: var(--foreground);
-  --tw-prose-code: var(--foreground);
-  --tw-prose-quotes: var(--muted-foreground);
-  --tw-prose-quote-borders: var(--border);
-  --tw-prose-hr: var(--border);
-  --tw-prose-bullets: var(--muted-foreground);
   --tw-prose-counters: var(--muted-foreground);
+  --tw-prose-bullets: color-mix(in oklch, var(--muted-foreground) 70%, transparent);
+  --tw-prose-hr: var(--border);
+  --tw-prose-quotes: var(--muted-foreground);
+  --tw-prose-quote-borders: color-mix(in oklch, var(--brand) 45%, transparent);
+  --tw-prose-captions: var(--muted-foreground);
+  --tw-prose-kbd: var(--foreground);
+  --tw-prose-kbd-shadows: var(--border);
+  --tw-prose-code: var(--foreground);
+  --tw-prose-pre-code: var(--foreground);
+  --tw-prose-pre-bg: var(--card);
   --tw-prose-th-borders: var(--border);
   --tw-prose-td-borders: var(--border);
-  caret-color: var(--foreground);
+  font-size: 1.0625rem;
+  line-height: 1.7;
+  caret-color: var(--brand);
+}
+
+/* Headings: tighter tracking and a calmer scale than prose's default */
+.dotmd-editor .tiptap :is(h1, h2, h3, h4) {
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+.dotmd-editor .tiptap h1 {
+  font-size: 2em;
+  line-height: 1.15;
+  margin-bottom: 0.7em;
+}
+.dotmd-editor .tiptap h2 {
+  font-size: 1.45em;
+  line-height: 1.25;
+  margin-top: 1.8em;
+  margin-bottom: 0.6em;
+}
+.dotmd-editor .tiptap h3 {
+  font-size: 1.2em;
+  margin-top: 1.6em;
+  margin-bottom: 0.5em;
 }
 
 /* Placeholder on an empty document / current empty line */
@@ -23,15 +55,28 @@
   float: left;
   height: 0;
   pointer-events: none;
-  color: var(--muted-foreground);
+  color: color-mix(in oklch, var(--muted-foreground) 70%, transparent);
+}
+
+/* Links */
+.dotmd-editor .tiptap a {
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in oklch, var(--brand) 35%, transparent);
+  text-underline-offset: 3px;
+  transition: text-decoration-color 120ms;
+}
+.dotmd-editor .tiptap a:hover {
+  text-decoration-color: var(--brand);
 }
 
 /* Inline code: no backtick decorations from prose */
 .dotmd-editor .tiptap :not(pre) > code {
+  font-size: 0.875em;
+  font-weight: 450;
   background: var(--muted);
+  border: 1px solid var(--border);
   border-radius: 0.3rem;
-  padding: 0.15em 0.35em;
-  font-weight: 500;
+  padding: 0.1em 0.35em;
 }
 .dotmd-editor .tiptap :not(pre) > code::before,
 .dotmd-editor .tiptap :not(pre) > code::after {
@@ -39,19 +84,27 @@
 }
 
 .dotmd-editor .tiptap pre {
-  background: var(--muted);
-  color: var(--foreground);
   border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.9rem 1.1rem;
+  font-size: 0.875em;
+  line-height: 1.65;
 }
 
+/* Blockquotes: an accent rule, upright muted text */
+.dotmd-editor .tiptap blockquote {
+  font-style: normal;
+  font-weight: 400;
+  border-inline-start-width: 3px;
+  padding-inline-start: 1em;
+}
 .dotmd-editor .tiptap blockquote p::before,
 .dotmd-editor .tiptap blockquote p::after {
   content: none;
 }
 
-.dotmd-editor .tiptap a {
-  text-decoration-color: var(--muted-foreground);
-  text-underline-offset: 3px;
+.dotmd-editor .tiptap hr {
+  margin-block: 2.5em;
 }
 
 /* Task lists */
@@ -73,7 +126,7 @@
 .dotmd-editor .tiptap ul[data-type="taskList"] li > label input {
   width: 1rem;
   height: 1rem;
-  accent-color: var(--primary);
+  accent-color: var(--brand);
   cursor: pointer;
 }
 .dotmd-editor .tiptap ul[data-type="taskList"] li > div {
@@ -85,26 +138,46 @@
 .dotmd-editor .tiptap ul[data-type="taskList"] li[data-checked="true"] > div {
   color: var(--muted-foreground);
   text-decoration: line-through;
+  text-decoration-color: color-mix(in oklch, var(--muted-foreground) 60%, transparent);
 }
 
-/* Tables */
+/* Tables: a rounded frame with borders only between cells */
 .dotmd-editor .tiptap .tableWrapper {
   overflow-x: auto;
+  margin-block: 1.75em;
+}
+.dotmd-editor .tiptap .tableWrapper table {
+  margin-block: 0;
 }
 .dotmd-editor .tiptap table {
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   table-layout: fixed;
   width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  font-size: 0.9375em;
 }
 .dotmd-editor .tiptap th,
 .dotmd-editor .tiptap td {
-  border: 1px solid var(--border);
-  padding: 0.4rem 0.6rem;
+  border: 0;
+  border-inline-end: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 0.45rem 0.7rem;
+  overflow-wrap: anywhere;
   position: relative;
   vertical-align: top;
 }
+.dotmd-editor .tiptap tr > :last-child {
+  border-inline-end: 0;
+}
+.dotmd-editor .tiptap tr:last-child > * {
+  border-bottom: 0;
+}
 .dotmd-editor .tiptap th {
   background: var(--muted);
+  font-weight: 600;
   text-align: left;
 }
 .dotmd-editor .tiptap th p,
@@ -115,7 +188,7 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: color-mix(in oklch, var(--ring) 20%, transparent);
+  background: color-mix(in oklch, var(--brand) 15%, transparent);
   pointer-events: none;
 }
 
@@ -125,10 +198,12 @@
   max-width: 100%;
   height: auto;
   border-radius: var(--radius);
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--foreground) 8%, transparent);
   margin: 0;
 }
 .dotmd-editor .tiptap img.ProseMirror-selectednode {
-  outline: 2px solid var(--ring);
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
 }
 
 /* Where an image goes while it is being saved (see image-upload.ts). */
@@ -149,7 +224,7 @@
 
 /* Selected node (e.g. horizontal rule) */
 .dotmd-editor .tiptap hr.ProseMirror-selectednode {
-  border-top-color: var(--ring);
+  border-top-color: var(--brand);
 }
 
 .dotmd-editor .tiptap .ProseMirror-gapcursor::after {

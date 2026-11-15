@@ -480,7 +480,7 @@
   <Sidebar.Inset class="h-svh overflow-hidden">
     <header
       class={[
-        "flex h-12 shrink-0 items-center gap-2 border-b bg-background px-3",
+        "flex h-12 shrink-0 items-center gap-2 border-b border-border/70 bg-background px-3",
         // Clear the macOS window buttons whenever the sidebar isn't beside
         // the header: collapsed, or a sheet in a narrow window.
         isMac && (!sidebarOpen || mobile.current) && "ps-20",
