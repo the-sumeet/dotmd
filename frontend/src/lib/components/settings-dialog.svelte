@@ -10,6 +10,7 @@
   import { Separator } from "$lib/components/ui/separator/index.js";
   import { Switch } from "$lib/components/ui/switch/index.js";
   import { settings, type Theme } from "$lib/settings.svelte";
+  import { errorText } from "$lib/utils";
 
   let {
     open = $bindable(false),
@@ -39,7 +40,7 @@
     try {
       await change();
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err);
+      error = errorText(err);
     }
   }
 

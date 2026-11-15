@@ -54,7 +54,8 @@ export function DownloadImage(note: string, rawURL: string): $CancellablePromise
  * LinkPath returns the href that links the note at from to the note at to,
  * relative to from's folder (e.g. "Projects/A.md" -> "Plan.md" is "../Plan.md").
  * Both paths are root-relative. Spaces are kept; "%", "#" and "?" are escaped
- * so ResolveLink reads them as part of the name.
+ * so ResolveLink reads them as part of the name, and a name that would read as
+ * a URL scheme ("Re: plan.md") gets "./" in front.
  */
 export function LinkPath($from: string, to: string): $CancellablePromise<string> {
     return $Call.ByID(3352834398, $from, to);

@@ -10,7 +10,7 @@
   import FolderOpenIcon from "@lucide/svelte/icons/folder-open";
   import type { SvelteSet } from "svelte/reactivity";
   import { noteTitle, type EntryKind, type Node } from "$lib/notes/notes";
-  import { imageSrc } from "$lib/notes/images";
+  import { fileSrc } from "$lib/notes/images";
   import NewEntryMenu from "./new-entry-menu.svelte";
   import NoteActionsMenu from "./note-actions-menu.svelte";
   import TreeRow from "./tree-row.svelte";
@@ -81,7 +81,7 @@
   {#snippet icon()}
     {#if node.isImage}
       <img
-        src={imageSrc(null, `/${node.path}`)}
+        src={fileSrc(node.path)}
         alt=""
         loading="lazy"
         class="size-4 rounded-sm bg-sidebar-foreground/10 object-cover"

@@ -5,6 +5,7 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import type { EntryKind } from "$lib/notes/notes";
+  import { errorText } from "$lib/utils";
 
   let {
     open = $bindable(false),
@@ -44,7 +45,7 @@
       await oncreate(kind, parent ? `${parent}/${trimmed}` : trimmed);
       open = false;
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err);
+      error = errorText(err);
     } finally {
       busy = false;
     }

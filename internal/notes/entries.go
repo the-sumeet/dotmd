@@ -44,10 +44,18 @@ func (s *NotesService) Rename(path, name string) (string, error) {
 		return s.rel(abs), nil
 	}
 	// On a case-insensitive disk "a.md" -> "A.md" finds the note itself, so
-	// the rename has to replace "the target". A hard link with another name
-	// is also the same file, but must not be replaced.
+	// the rename has to replace "the target". Only when no entry is really
+	// named that: a hard link "A.md" beside "a.md" (case-sensitive disk) is
+	// the same file too, but renaming onto it does nothing.
 	if strings.EqualFold(name, filepath.Base(abs)) {
 		if existing, err := os.Lstat(target); err == nil && os.SameFile(info, existing) {
+			taken, err := hasEntry(filepath.Dir(abs), name)
+			if err != nil {
+				return "", err
+			}
+			if taken {
+				return "", errExists
+			}
 			if err := os.Rename(abs, target); err != nil {
 				return "", err
 			}
@@ -58,6 +66,21 @@ func (s *NotesService) Rename(path, name string) (string, error) {
 		return "", err
 	}
 	return s.rel(target), nil
+}
+
+// hasEntry reports whether dir holds an entry named exactly name (case and
+// all), which a lookup on a case-insensitive disk can't tell.
+func hasEntry(dir, name string) (bool, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false, err
+	}
+	for _, e := range entries {
+		if e.Name() == name {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // Delete moves the note, folder (with everything in it) or image at path to

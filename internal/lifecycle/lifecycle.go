@@ -4,12 +4,14 @@
 // Closing the window or quitting is cancelled; the frontend is sent
 // FlushEvent, calls [Service.Flushing] to say it is saving, and then calls
 // [Service.Saved], which quits for real, or [Service.Unsaved] if the save
-// failed, which keeps the app open so the error can be seen.
+// failed, which keeps the app open so the error can be seen. Once a later save
+// succeeds, the frontend calls [Service.Recovered].
 //
 // Quitting must never get stuck: if the frontend does not answer within
 // answerTimeout, or its save takes longer than saveTimeout, the app quits
 // anyway, and once a save on quit has failed, the next failure quits too
-// (the user has been told and chose to quit again).
+// (the user has been told and chose to quit again), unless the edits have
+// been saved since: then a new failure is a new problem and warns again.
 package lifecycle
 
 import (
@@ -29,12 +31,13 @@ const (
 	saveTimeout   = 30 * time.Second // frontend is saving but never finished
 )
 
-// Service is bound to the frontend; its methods are Flushing, Saved and Unsaved.
+// Service is bound to the frontend; its methods are Flushing, Saved, Unsaved
+// and Recovered.
 type Service struct {
 	app       *application.App
 	quitting  atomic.Bool // set once quitting is allowed
 	requested atomic.Bool // set while the frontend is being asked to flush
-	failed    atomic.Bool // set once a save on quit has failed
+	failed    atomic.Bool // a save on quit failed and nothing has been saved since
 
 	mu    sync.Mutex
 	timer *time.Timer // quits if the frontend stops answering
@@ -63,7 +66,8 @@ func (s *Service) Saved() {
 
 // Unsaved tells the app that pending edits could not be written. The first
 // time, the quit is called off so the user sees the error and keeps the
-// edits; if it happens again on a later quit, the app quits anyway.
+// edits; if it happens again on a later quit, with no successful save in
+// between (see Recovered), the app quits anyway.
 func (s *Service) Unsaved() {
 	if s.failed.Swap(true) {
 		s.quit()
@@ -76,6 +80,12 @@ func (s *Service) Unsaved() {
 	}
 	s.mu.Unlock()
 	s.requested.Store(false)
+}
+
+// Recovered tells the app that edits are being saved again after a save on
+// quit failed, so the next failure on quit warns again instead of quitting.
+func (s *Service) Recovered() {
+	s.failed.Store(false)
 }
 
 // ShouldQuit is for application.Options.ShouldQuit: it defers the first quit

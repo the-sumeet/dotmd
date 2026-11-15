@@ -8,6 +8,7 @@ import {
   isImageUrl,
   loneImageSrc,
 } from "$lib/notes/images";
+import { errorText } from "$lib/utils";
 
 export interface ImageUploadOptions {
   /**
@@ -69,10 +70,6 @@ function placeholderAt(view: EditorView, id: object): number | null {
   return found?.length ? found[0].from : null;
 }
 
-function errorText(err: unknown) {
-  return err instanceof Error ? err.message : String(err);
-}
-
 /**
  * What a paste should do with images: upload the clipboard's image files,
  * download an image URL, or nothing (let the editor paste as usual).
@@ -131,8 +128,17 @@ export const ImageUpload = Extension.create<ImageUploadOptions, ImageUploadStora
         const images = files.filter(isImageFile);
         if (!editor || !images.length) return false;
         const at = pos ?? editor.state.selection.from;
+        // Saves run at once, but each image is inserted only after the one
+        // before it settles, so they land in the order the user chose rather
+        // than the order the saves finish.
+        let previous: Promise<unknown> = Promise.resolve();
         for (const file of images) {
-          this.track(at, ext.options.upload(file), baseName(file.name) || "image");
+          const saved = ext.options.upload(file);
+          const inOrder = previous.then(() => saved);
+          // track's handlers are attached first, so they run (and insert)
+          // before the next image's turn comes.
+          this.track(at, inOrder, baseName(file.name) || "image");
+          previous = inOrder.catch(() => {});
         }
         return true;
       },

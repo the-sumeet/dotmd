@@ -118,6 +118,16 @@ func (s *NotesService) Write(path, content string) error {
 	if !isMarkdown(abs) {
 		return errors.New("only markdown files can be saved")
 	}
+	// Write through a symlink to the note it points to; replacing the link
+	// itself would turn it into a separate copy.
+	if info, err := os.Lstat(abs); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		if abs, err = filepath.EvalSymlinks(abs); err != nil {
+			return err
+		}
+		if !isMarkdown(abs) {
+			return errors.New("only markdown files can be saved")
+		}
+	}
 	dir := filepath.Dir(abs)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err

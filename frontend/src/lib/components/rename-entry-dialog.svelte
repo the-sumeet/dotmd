@@ -6,6 +6,7 @@
   import { Input } from "$lib/components/ui/input/index.js";
   import { baseName } from "$lib/notes/images";
   import { noteTitle, type FileKind } from "$lib/notes/notes";
+  import { errorText } from "$lib/utils";
 
   let {
     open = $bindable(false),
@@ -48,7 +49,7 @@
       await onrename(path, trimmed);
       open = false;
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err);
+      error = errorText(err);
     } finally {
       busy = false;
     }

@@ -63,7 +63,16 @@ export function baseName(name: string): string {
  */
 export function imageSrc(note: string | null, src: string): string {
   const path = rootPath(note, src);
-  return path === null ? src : FILE_ROUTE + path.split("/").map(encodeURIComponent).join("/");
+  return path === null ? src : fileSrc(path);
+}
+
+/**
+ * The URL the webview loads the root-relative file `path` from. Unlike
+ * imageSrc, `path` is a file path, not an href: "#", "?" and "%" are part of
+ * the name.
+ */
+export function fileSrc(path: string): string {
+  return FILE_ROUTE + path.split("/").map(encodeURIComponent).join("/");
 }
 
 /**
@@ -93,7 +102,8 @@ export function rootPath(note: string | null, src: string): string | null {
 
 /**
  * Href that links note `from` to the root-relative file `to`, like Go's
- * LinkPath: relative to `from`'s folder, with "%", "#" and "?" escaped.
+ * LinkPath: relative to `from`'s folder, with "%", "#" and "?" escaped, and
+ * "./" in front when the name would otherwise read as a scheme ("Re: x.md").
  */
 export function relativeHref(from: string, to: string): string {
   const fromDir = from.split("/").slice(0, -1);
@@ -102,7 +112,8 @@ export function relativeHref(from: string, to: string): string {
   while (common < fromDir.length && common < target.length - 1 && fromDir[common] === target[common]) {
     common++;
   }
-  const rel = [...fromDir.slice(common).map(() => ".."), ...target.slice(common)].join("/");
+  let rel = [...fromDir.slice(common).map(() => ".."), ...target.slice(common)].join("/");
+  if (isExternalLink(rel)) rel = "./" + rel;
   return rel.replace(/[%#?]/g, (ch) => encodeURIComponent(ch));
 }
 

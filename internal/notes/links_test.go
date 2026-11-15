@@ -95,7 +95,7 @@ func TestResolveLinkCase(t *testing.T) {
 
 func TestLinkPathResolves(t *testing.T) {
 	root := t.TempDir()
-	notes := []string{"A.md", "Sub/C# Tips.md", "What?.md", "100% done.md", "Sub/Deep/x.md"}
+	notes := []string{"A.md", "Sub/C# Tips.md", "What?.md", "100% done.md", "Sub/Deep/x.md", "Re: plan.md"}
 	for _, f := range notes {
 		p := filepath.Join(root, filepath.FromSlash(f))
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -128,6 +128,10 @@ func TestLinkPath(t *testing.T) {
 		{"A.md", "C# Tips.md", "C%23 Tips.md"},
 		{"A.md", "What?.md", "What%3F.md"},
 		{"A.md", "100% done.md", "100%25 done.md"},
+		{"A.md", "Re: plan.md", "./Re: plan.md"},
+		{"A.md", "Re: x/B.md", "./Re: x/B.md"},
+		{"Sub/A.md", "Re: plan.md", "../Re: plan.md"},
+		{"A.md", "Time 10:30.md", "Time 10:30.md"},
 	}
 	for _, c := range cases {
 		if got := s.LinkPath(c.from, c.to); got != c.want {

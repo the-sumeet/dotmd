@@ -15,6 +15,7 @@
   import { settings } from "$lib/settings.svelte";
   import { dialogOpen, isMac, isMod, modKey, shortcutKey } from "$lib/platform";
   import { IsMobile } from "$lib/hooks/is-mobile.svelte";
+  import { errorText } from "$lib/utils";
   import { Service as Lifecycle } from "../bindings/dotmd/internal/lifecycle";
   import {
     createFolder,
@@ -30,6 +31,7 @@
     resolveLink,
     tagsOf,
     trashEntry,
+    withMovedNotes,
     withNoteTags,
     writeNote,
     type EntryKind,
@@ -98,8 +100,12 @@
   let openToken = 0;
   /** The note being opened while `opening` is true. */
   let openingPath: string | null = null;
+  /** A save on quit failed; cleared (and Go told) once a save succeeds. */
+  let quitUnsaved = false;
+  /** True while the notes-folder picker is open; editing is paused. */
+  let switchingFolder = $state(false);
 
-  const canEdit = $derived(currentPath !== null && !opening);
+  const canEdit = $derived(currentPath !== null && !opening && !switchingFolder);
   const folders = $derived(currentPath?.split("/").slice(0, -1) ?? []);
 
   /** Every note path, in sidebar order, for the quick switcher. */
@@ -125,10 +131,6 @@
     } catch {
       // Recents are a convenience; private storage just means none are kept.
     }
-  }
-
-  function errorText(err: unknown) {
-    return err instanceof Error ? err.message : String(err);
   }
 
   function setMode(next: Mode) {
@@ -179,6 +181,11 @@
     lastSaved = content;
     saveFailed = false;
     notice = "";
+    if (quitUnsaved) {
+      // The failure the user was warned about on quit is over; a new one warns again.
+      quitUnsaved = false;
+      void Lifecycle.Recovered();
+    }
     if (previous === null || frontmatterOf(previous) !== frontmatterOf(content)) {
       void updateTags(path, content);
     }
@@ -265,7 +272,8 @@
       try {
         content = await readNote(path);
       } catch (err) {
-        notice = `Couldn't open ${noteTitle(path)}: ${errorText(err)}`;
+        // A cancelled open (its file was just renamed or trashed) says nothing.
+        if (token === openToken) notice = `Couldn't open ${noteTitle(path)}: ${errorText(err)}`;
         return;
       }
       if (token !== openToken) return;
@@ -327,17 +335,28 @@
    * if that fails the folder isn't changed, so no edits are lost.
    */
   async function changeNotesFolder() {
-    if (!(await save())) {
-      throw new Error("The open note couldn't be saved, so the folder wasn't changed.");
-    }
-    if (!(await settings.chooseNotesFolder())) return; // cancelled
-    // Go has switched folders: drop the old folder's note before anything
-    // (an autosave, an await) can write it into the new one.
-    closeNote();
-    tree = [];
-    tags = [];
-    saveRecent([]); // recent paths belonged to the old folder
-    await loadNotes();
+    // In the save queue, so no autosave can run while the picker is open and
+    // reach Go after it has switched folders. Editing is paused meanwhile, so
+    // an image that finishes saving isn't added to a note about to close.
+    const changed = await exclusive(async () => {
+      switchingFolder = true;
+      try {
+        if (!(await writeIfChanged())) {
+          throw new Error("The open note couldn't be saved, so the folder wasn't changed.");
+        }
+        if (!(await settings.chooseNotesFolder())) return false; // cancelled
+        // Go has switched folders: drop the old folder's note before
+        // anything (an autosave, an await) can write it into the new one.
+        closeNote();
+        tree = [];
+        tags = [];
+        saveRecent([]); // recent paths belonged to the old folder
+        return true;
+      } finally {
+        switchingFolder = false;
+      }
+    });
+    if (changed) await loadNotes();
   }
 
   /**
@@ -396,8 +415,8 @@
       const to = await renameOnDisk(path, name);
       if (currentPath) currentPath = movedPath(currentPath, path, to) ?? currentPath;
       saveRecent(recent.map((p) => movedPath(p, path, to) ?? p));
+      tags = withMovedNotes(tags, path, to);
       await refreshTree();
-      void refreshTags();
       return to;
     });
   }
@@ -417,8 +436,8 @@
       await trashEntry(path);
       if (affected) closeNote();
       saveRecent(recent.filter((p) => !isWithin(p, path)));
+      tags = withMovedNotes(tags, path, null);
       await refreshTree();
-      void refreshTags();
     });
   }
 
@@ -447,13 +466,15 @@
 
     // The Go side holds back quitting until pending edits are written.
     // If the save fails, the quit is called off once so the error stays
-    // visible; quitting again retries and quits even if it fails again.
+    // visible; quitting again retries and quits even if it fails again,
+    // unless a save has worked in between.
     const offFlush = Events.On(FLUSH_EVENT, async () => {
       void Lifecycle.Flushing(); // a slow save gets more time before Go gives up
       if (await save()) {
         await Lifecycle.Saved();
       } else {
         notice += " Quit again to quit without saving.";
+        quitUnsaved = true;
         await Lifecycle.Unsaved();
       }
     });

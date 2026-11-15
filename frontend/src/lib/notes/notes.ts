@@ -53,6 +53,24 @@ export function withNoteTags(tags: Tag[], path: string, names: string[]): Tag[] 
     .sort((a, b) => byLower(a.name, b.name));
 }
 
+/**
+ * `tags` after the entry at `from` was renamed to `to`, or deleted (`to` is
+ * null): notes inside it move with it or drop out, without rescanning them all.
+ */
+export function withMovedNotes(tags: Tag[], from: string, to: string | null): Tag[] {
+  return tags
+    .map((t) => ({
+      name: t.name,
+      notes: t.notes
+        .flatMap((p) => {
+          if (!isWithin(p, from)) return [p];
+          return to === null ? [] : [movedPath(p, from, to)!];
+        })
+        .sort(byLower),
+    }))
+    .filter((t) => t.notes.length);
+}
+
 export function readNote(path: string): Promise<string> {
   return NotesService.Read(path);
 }

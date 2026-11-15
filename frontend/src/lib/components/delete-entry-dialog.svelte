@@ -3,6 +3,7 @@
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import { noteTitle, type FileKind } from "$lib/notes/notes";
+  import { errorText } from "$lib/utils";
 
   let {
     open = $bindable(false),
@@ -40,7 +41,7 @@
       await ondelete?.(path);
       open = false;
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err);
+      error = errorText(err);
     } finally {
       busy = false;
     }

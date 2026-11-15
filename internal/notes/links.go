@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -86,12 +87,21 @@ var hrefEscaper = strings.NewReplacer("%", "%25", "#", "%23", "?", "%3F")
 // LinkPath returns the href that links the note at from to the note at to,
 // relative to from's folder (e.g. "Projects/A.md" -> "Plan.md" is "../Plan.md").
 // Both paths are root-relative. Spaces are kept; "%", "#" and "?" are escaped
-// so ResolveLink reads them as part of the name.
+// so ResolveLink reads them as part of the name, and a name that would read as
+// a URL scheme ("Re: plan.md") gets "./" in front.
 func (s *NotesService) LinkPath(from, to string) string {
 	dir := filepath.Dir(filepath.FromSlash(from))
 	rel, err := filepath.Rel(dir, filepath.FromSlash(to))
 	if err != nil {
 		rel = to
 	}
-	return hrefEscaper.Replace(filepath.ToSlash(rel))
+	rel = filepath.ToSlash(rel)
+	if schemeLike.MatchString(rel) {
+		rel = "./" + rel
+	}
+	return hrefEscaper.Replace(rel)
 }
+
+// schemeLike matches hrefs that start like a URL scheme, the way the frontend
+// tells external links from note paths (isExternalLink).
+var schemeLike = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*:`)

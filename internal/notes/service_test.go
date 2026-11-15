@@ -198,3 +198,38 @@ func TestSetRoot(t *testing.T) {
 		t.Errorf("Tree() after SetRoot = %+v, want [n.md]", tree)
 	}
 }
+
+// Saving a note reached through a symlink writes the note it points to and
+// leaves the link in place.
+func TestWriteThroughSymlink(t *testing.T) {
+	root := t.TempDir()
+	elsewhere := t.TempDir()
+	real := filepath.Join(elsewhere, "Shared.md")
+	if err := os.WriteFile(real, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "Shared.md")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skip("no symlinks here:", err)
+	}
+	s := &NotesService{root: root}
+	if err := s.Write("Shared.md", "new"); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("Shared.md is no longer a symlink (%v)", err)
+	}
+	if got, _ := os.ReadFile(real); string(got) != "new" {
+		t.Errorf("linked note = %q, want %q", got, "new")
+	}
+
+	if err := os.Symlink(filepath.Join(elsewhere, "x.txt"), filepath.Join(root, "Text.md")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(elsewhere, "x.txt"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Write("Text.md", "new"); err == nil {
+		t.Error("Write through a symlink to a non-markdown file succeeded")
+	}
+}

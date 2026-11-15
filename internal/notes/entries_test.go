@@ -78,6 +78,20 @@ func TestRenameOntoHardLink(t *testing.T) {
 	}
 }
 
+// A hard link differing only in case is the same file, and on a
+// case-insensitive disk also the same name; the rename must still fail
+// rather than report success without doing anything.
+func TestRenameOntoCaseHardLink(t *testing.T) {
+	s := newTestService(t, "a.md")
+	root := s.Root()
+	if err := os.Link(filepath.Join(root, "a.md"), filepath.Join(root, "A.md")); err != nil {
+		t.Skip("case-insensitive disk or no hard links:", err)
+	}
+	if got, err := s.Rename("a.md", "A"); err != errExists {
+		t.Errorf("Rename onto a case hard link = %q, %v; want %v", got, err, errExists)
+	}
+}
+
 func TestDelete(t *testing.T) {
 	var trashed []string
 	moveToTrash = func(abs string) error {
