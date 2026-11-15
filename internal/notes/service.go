@@ -34,7 +34,13 @@ type NotesService struct {
 
 // New returns a service rooted at the default notes folder (~/Documents/dotmd).
 func New() *NotesService {
-	return &NotesService{root: DefaultRoot()}
+	return NewAt(DefaultRoot())
+}
+
+// NewAt returns a service rooted at root, which is created on startup if it
+// does not exist.
+func NewAt(root string) *NotesService {
+	return &NotesService{root: root}
 }
 
 // DefaultRoot is the notes folder used until the user picks their own.
@@ -57,6 +63,28 @@ func (s *NotesService) Root() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.root
+}
+
+// SetRoot switches to another notes folder, which must already exist. The
+// frontend changes folders through the settings service, which saves it.
+//
+//wails:ignore
+func (s *NotesService) SetRoot(path string) error {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	info, err := os.Stat(abs)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return errors.New("not a folder: " + abs)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.root = abs
+	return nil
 }
 
 // Tree lists the folders, markdown notes and images under the root; image

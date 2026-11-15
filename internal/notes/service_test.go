@@ -166,3 +166,35 @@ func TestUnreadableSubfolder(t *testing.T) {
 		t.Errorf("Tags() = %+v, want only ok.md tagged", tags)
 	}
 }
+
+func TestSetRoot(t *testing.T) {
+	old, next := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(next, "n.md"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := NewAt(old)
+
+	if err := s.SetRoot(filepath.Join(old, "missing")); err == nil {
+		t.Error("SetRoot(missing folder): want error")
+	}
+	if err := s.SetRoot(filepath.Join(next, "n.md")); err == nil {
+		t.Error("SetRoot(file): want error")
+	}
+	if s.Root() != old {
+		t.Fatalf("root changed after failed SetRoot: %q", s.Root())
+	}
+
+	if err := s.SetRoot(next); err != nil {
+		t.Fatalf("SetRoot: %v", err)
+	}
+	if s.Root() != next {
+		t.Errorf("Root() = %q, want %q", s.Root(), next)
+	}
+	tree, err := s.Tree()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tree) != 1 || tree[0].Path != "n.md" {
+		t.Errorf("Tree() after SetRoot = %+v, want [n.md]", tree)
+	}
+}

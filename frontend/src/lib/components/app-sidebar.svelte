@@ -3,6 +3,7 @@
   import FilePlusIcon from "@lucide/svelte/icons/file-plus";
   import HashIcon from "@lucide/svelte/icons/hash";
   import SearchIcon from "@lucide/svelte/icons/search";
+  import SettingsIcon from "@lucide/svelte/icons/settings";
 </script>
 
 <script lang="ts">
@@ -30,6 +31,7 @@
     oninsertimage,
     ondeleteimage,
     onsearch,
+    onsettings,
     ...restProps
   }: ComponentProps<typeof Sidebar.Root> & {
     /** Folders, notes and images under the notes root. */
@@ -50,6 +52,8 @@
     ondeleteimage?: (path: string) => Promise<void>;
     /** Open the quick switcher. */
     onsearch?: () => void;
+    /** Open the settings dialog. */
+    onsettings?: () => void;
   } = $props();
 
   /** Image the delete dialog asks about. */
@@ -102,6 +106,11 @@
   function search() {
     if (sidebar.isMobile) sidebar.setOpenMobile(false);
     onsearch?.();
+  }
+
+  function openSettings() {
+    if (sidebar.isMobile) sidebar.setOpenMobile(false);
+    onsettings?.();
   }
 
   /**
@@ -201,13 +210,17 @@
       {/each}
     </SidebarSection>
   </Sidebar.Content>
+  <Sidebar.Footer class="pt-0">
+    {@render action("Settings", `${modKey},`, openSettings, settingsIcon)}
+  </Sidebar.Footer>
   <Sidebar.Rail />
 </Sidebar.Root>
 
 {#snippet searchIcon()}<SearchIcon />{/snippet}
 {#snippet newIcon()}<FilePlusIcon />{/snippet}
+{#snippet settingsIcon()}<SettingsIcon />{/snippet}
 
-<!-- A top-of-sidebar command row with its keyboard shortcut on hover. -->
+<!-- A sidebar command row with its keyboard shortcut on hover. -->
 {#snippet action(label: string, shortcut: string, onclick: () => void, icon: Snippet)}
   <button
     type="button"

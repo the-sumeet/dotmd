@@ -4,5 +4,9 @@ import { mount } from 'svelte'
 import '@wailsio/runtime'
 import './app.css'
 import App from './App.svelte'
+import { applyStoredTheme } from './lib/settings.svelte'
+
+// index.html already set light or dark; this keeps "System" following the OS.
+applyStoredTheme()
 
 mount(App, { target: document.getElementById('app')! })

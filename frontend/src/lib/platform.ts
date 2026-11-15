@@ -16,16 +16,19 @@ export function isMod(e: KeyboardEvent): boolean {
 }
 
 /**
- * The key a shortcut was pressed with, lowercased: "p", "/", … The typed
- * character is used when it is a Latin letter or "/", so ⌘P follows the
- * user's layout (Dvorak, AZERTY) and ⌘/ works where "/" needs Shift (German).
- * Otherwise (Cyrillic, Greek, …) it falls back to the physical US key.
+ * The key a shortcut was pressed with, lowercased: "p", "/", ",", … A typed
+ * ASCII character is used as is, so ⌘P follows the user's layout (Dvorak,
+ * AZERTY) and ⌘/ works where "/" needs Shift (German). Only layouts that
+ * type something else (Cyrillic, Greek, …) fall back to the physical US key,
+ * so no Latin layout gets a shortcut on two keys.
  */
 export function shortcutKey(e: KeyboardEvent): string {
   const key = e.key.toLowerCase();
-  if (/^[a-z/]$/.test(key)) return key;
+  if (/^[\x20-\x7e]$/.test(key)) return key;
   if (/^Key[A-Z]$/.test(e.code)) return e.code.slice(3).toLowerCase();
-  return e.code === "Slash" ? "/" : key;
+  if (e.code === "Slash") return "/";
+  if (e.code === "Comma") return ",";
+  return key;
 }
 
 /** True while a modal dialog (not the phone sidebar sheet) is open. */

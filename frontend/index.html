@@ -5,6 +5,20 @@
     <link rel="icon" type="image/png" href="/wails.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>dotmd</title>
+    <script>
+      // Pick light or dark before the first paint; the Theme setting itself
+      // lives in src/lib/settings.svelte.ts, which mirrors it to this key.
+      (function () {
+        var theme;
+        try {
+          theme = localStorage.getItem("dotmd:theme");
+        } catch (e) {}
+        var dark =
+          theme === "dark" ||
+          (theme !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.toggle("dark", dark);
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

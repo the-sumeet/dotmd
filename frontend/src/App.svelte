@@ -11,6 +11,8 @@
   import { Separator } from "$lib/components/ui/separator/index.js";
   import AppSidebar from "$lib/components/app-sidebar.svelte";
   import QuickOpen from "$lib/components/quick-open.svelte";
+  import SettingsDialog from "$lib/components/settings-dialog.svelte";
+  import { settings } from "$lib/settings.svelte";
   import { dialogOpen, isMac, isMod, modKey, shortcutKey } from "$lib/platform";
   import { IsMobile } from "$lib/hooks/is-mobile.svelte";
   import { Service as Lifecycle } from "../bindings/dotmd/internal/lifecycle";
@@ -78,6 +80,7 @@
   /** True once the notes folder has been read (or failed to). */
   let loaded = $state(false);
   let quickOpen = $state(false);
+  let settingsOpen = $state(false);
   /** Notes opened lately, most recent first; remembered across launches. */
   let recent = $state<string[]>(loadRecent());
   let sidebar: AppSidebar;
@@ -107,7 +110,11 @@
   }
 
   function remember(path: string) {
-    recent = [path, ...recent.filter((p) => p !== path)].slice(0, RECENT_LIMIT);
+    saveRecent([path, ...recent.filter((p) => p !== path)].slice(0, RECENT_LIMIT));
+  }
+
+  function saveRecent(paths: string[]) {
+    recent = paths;
     try {
       localStorage.setItem(RECENT_KEY, JSON.stringify(recent));
     } catch {
@@ -294,6 +301,52 @@
     }
   }
 
+  /**
+   * Read the notes folder and open its first note. An empty default folder
+   * gets the Welcome note; a folder the user picked is left as it is, and so
+   * is the default while it stands in for a missing one.
+   */
+  async function loadNotes() {
+    try {
+      tree = await loadTree();
+      if (!tree.length && settings.defaultFolder && !settings.missingFolder) {
+        await writeNote("Welcome.md", sample);
+        tree = await loadTree();
+      }
+      void refreshTags();
+      const first = notePaths(tree)[0];
+      if (first) await openNote(first);
+    } catch (err) {
+      notice = `Couldn't load notes: ${errorText(err)}`;
+    }
+  }
+
+  /**
+   * Switch to a notes folder the user picks. The open note is saved first;
+   * if that fails the folder isn't changed, so no edits are lost.
+   */
+  async function changeNotesFolder() {
+    if (!(await save())) {
+      throw new Error("The open note couldn't be saved, so the folder wasn't changed.");
+    }
+    if (!(await settings.chooseNotesFolder())) return; // cancelled
+    // Go has switched folders: drop the old folder's note before anything
+    // (an autosave, an await) can write it into the new one.
+    openToken++; // a note still opening belongs to the old folder
+    opening = false;
+    currentPath = null;
+    lastSaved = null;
+    saveFailed = false;
+    notice = "";
+    markdown = "";
+    editor.setMarkdown("");
+    sourceEdited = false;
+    tree = [];
+    tags = [];
+    saveRecent([]); // recent paths belonged to the old folder
+    await loadNotes();
+  }
+
   /** Create a note or folder from the sidebar; new notes open right away. */
   async function createEntry(kind: EntryKind, name: string) {
     const path = kind === "note" ? await createNote(name) : await createFolder(name);
@@ -304,20 +357,12 @@
 
   onMount(() => {
     (async () => {
-      try {
-        tree = await loadTree();
-        if (!tree.length) {
-          await writeNote("Welcome.md", sample);
-          tree = await loadTree();
-        }
-        void refreshTags();
-        const first = notePaths(tree)[0];
-        if (first) await openNote(first);
-      } catch (err) {
-        notice = `Couldn't load notes: ${errorText(err)}`;
-      } finally {
-        loaded = true;
+      await settings.load();
+      await loadNotes();
+      if (settings.missingFolder) {
+        notice = `Couldn't find ${settings.missingFolder}; showing ${settings.notesFolder}. Reconnect it and restart, or pick another folder in Settings.`;
       }
+      loaded = true;
     })();
 
     const onVisibility = () => {
@@ -368,6 +413,9 @@
         break;
       case "n":
         sidebar.newNote();
+        break;
+      case ",":
+        settingsOpen = true;
         break;
       case "/":
         if (!canEdit) return;
@@ -427,6 +475,7 @@
     oninsertimage={insertImage}
     ondeleteimage={removeImage}
     onsearch={() => (quickOpen = true)}
+    onsettings={() => (settingsOpen = true)}
   />
   <Sidebar.Inset class="h-svh overflow-hidden">
     <header
@@ -533,7 +582,12 @@
     </header>
 
     <div bind:this={scroller} class="flex-1 overflow-y-auto">
-      <div class="mx-auto w-full max-w-3xl px-6 py-10 sm:px-12">
+      <div
+        class={[
+          "mx-auto w-full px-6 py-10 sm:px-12",
+          settings.wideLayout ? "max-w-5xl" : "max-w-3xl",
+        ]}
+      >
         <!-- Kept mounted while hidden so editor state (history, selection) survives toggling. -->
         <div class:hidden={mode !== "edit" || !currentPath}>
           <Editor
@@ -586,3 +640,4 @@
 </Sidebar.Provider>
 
 <QuickOpen bind:open={quickOpen} notes={allNotes} {recent} onopen={openNote} />
+<SettingsDialog bind:open={settingsOpen} onchoosefolder={changeNotesFolder} />
