@@ -33,11 +33,12 @@ export function CreateNote(path: string): $CancellablePromise<string> {
 }
 
 /**
- * DeleteImage deletes the image at path. An "assets" folder left empty is
+ * Delete moves the note, folder (with everything in it) or image at path to
+ * the system Trash. An "assets" folder left empty by deleting an image is
  * removed too, so it does not linger beside the note.
  */
-export function DeleteImage(p: string): $CancellablePromise<void> {
-    return $Call.ByID(2003821379, p);
+export function Delete(path: string): $CancellablePromise<void> {
+    return $Call.ByID(820936078, path);
 }
 
 /**
@@ -64,6 +65,16 @@ export function LinkPath($from: string, to: string): $CancellablePromise<string>
  */
 export function Read(path: string): $CancellablePromise<string> {
     return $Call.ByID(1047430633, path);
+}
+
+/**
+ * Rename gives the note, folder or image at path a new name in the same
+ * folder and returns its new root-relative path. A note or image keeps its
+ * extension if name leaves it out ("Plan" -> "Plan.md"). Renaming onto an
+ * existing entry is an error, except to change only the case of the name.
+ */
+export function Rename(path: string, name: string): $CancellablePromise<string> {
+    return $Call.ByID(2074343847, path, name);
 }
 
 /**

@@ -1,8 +1,8 @@
 <!--
   One entry of the Files tree: a note, an image, or a folder that renders its
   children (recursively) when expanded. Every row has a "+" menu for creating a
-  note or folder in the folder the row belongs to; notes and images also get a
-  "⋯" menu. Clicking an image adds it to the open note.
+  note or folder in the folder the row belongs to, and a "⋯" menu to rename or
+  delete the entry. Clicking an image adds it to the open note.
 -->
 <script lang="ts">
   import FileTextIcon from "@lucide/svelte/icons/file-text";
@@ -24,7 +24,8 @@
     onopen,
     onnew,
     oninsertimage,
-    ondeleteimage,
+    onrename,
+    ondelete,
   }: {
     node: Node;
     depth?: number;
@@ -36,8 +37,10 @@
     onnew: (kind: EntryKind, parent: string) => void;
     /** Add an image (root-relative path) to the open note. */
     oninsertimage: (path: string) => void;
-    /** Ask to delete an image (e.g. open a confirm dialog). */
-    ondeleteimage: (path: string) => void;
+    /** Ask to rename an entry (e.g. open a dialog). */
+    onrename: (node: Node) => void;
+    /** Ask to delete an entry (e.g. open a confirm dialog). */
+    ondelete: (node: Node) => void;
   } = $props();
 
   const title = $derived(
@@ -97,11 +100,13 @@
       onnote={() => onnew("note", parent)}
       onfolder={() => onnew("folder", parent)}
     />
-    {#if node.isImage}
-      <NoteActionsMenu path={node.path} {activePath} ondelete={() => ondeleteimage(node.path)} />
-    {:else if !node.isDir}
-      <NoteActionsMenu path={node.path} {activePath} />
-    {/if}
+    <NoteActionsMenu
+      path={node.path}
+      {activePath}
+      copy={!node.isDir}
+      onrename={() => onrename(node)}
+      ondelete={() => ondelete(node)}
+    />
   {/snippet}
 </TreeRow>
 
@@ -115,7 +120,8 @@
       {onopen}
       {onnew}
       {oninsertimage}
-      {ondeleteimage}
+      {onrename}
+      {ondelete}
     />
   {:else}
     <p

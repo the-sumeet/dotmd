@@ -118,32 +118,6 @@ func (s *NotesService) DownloadImage(note, rawURL string) (string, error) {
 	return s.saveAsset(note, ext, data)
 }
 
-// DeleteImage deletes the image at path. An "assets" folder left empty is
-// removed too, so it does not linger beside the note.
-func (s *NotesService) DeleteImage(p string) error {
-	abs, err := s.resolve(p)
-	if err != nil {
-		return err
-	}
-	if !isImage(abs) {
-		return errors.New("only images can be deleted here")
-	}
-	info, err := os.Lstat(abs)
-	if err != nil {
-		return err
-	}
-	if !info.Mode().IsRegular() {
-		return errors.New("only images can be deleted here")
-	}
-	if err := os.Remove(abs); err != nil {
-		return err
-	}
-	if dir := filepath.Dir(abs); filepath.Base(dir) == assetsDir {
-		_ = os.Remove(dir) // fails, harmlessly, unless the folder is empty
-	}
-	return nil
-}
-
 var errTooLarge = fmt.Errorf("images can be at most %d MB", maxImageBytes>>20)
 
 // imageExt checks that data is an image and returns the extension to save it

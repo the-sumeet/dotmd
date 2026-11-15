@@ -122,25 +122,6 @@ func TestDownloadImage(t *testing.T) {
 	}
 }
 
-func TestDeleteImage(t *testing.T) {
-	s := newTestService(t, "n.md", "assets/b.png", "Sub/assets/A.JPG", "d.txt", "Sub/x.md")
-	for _, p := range []string{"n.md", "../x.png", "d.txt", "missing.png"} {
-		if err := s.DeleteImage(p); err == nil {
-			t.Errorf("DeleteImage(%q) succeeded, want error", p)
-		}
-	}
-	if err := s.DeleteImage("Sub/assets/A.JPG"); err != nil {
-		t.Fatal(err)
-	}
-	// The emptied assets folder goes too; the note's folder stays.
-	if _, err := os.Stat(filepath.Join(s.Root(), "Sub", "assets")); !os.IsNotExist(err) {
-		t.Errorf("Sub/assets still exists (err = %v)", err)
-	}
-	if _, err := os.Stat(filepath.Join(s.Root(), "Sub", "x.md")); err != nil {
-		t.Errorf("note removed: %v", err)
-	}
-}
-
 func TestFileMiddleware(t *testing.T) {
 	s := newTestService(t, "n.md")
 	if err := os.MkdirAll(filepath.Join(s.Root(), "My Notes", "assets"), 0o755); err != nil {

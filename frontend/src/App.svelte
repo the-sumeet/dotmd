@@ -19,13 +19,17 @@
   import {
     createFolder,
     createNote,
+    isWithin,
     loadTags,
     loadTree,
+    movedPath,
     notePaths,
     noteTitle,
     readNote,
+    renameEntry as renameOnDisk,
     resolveLink,
     tagsOf,
+    trashEntry,
     withNoteTags,
     writeNote,
     type EntryKind,
@@ -35,7 +39,6 @@
   import { canOpenExternally, isExternalLink, normalizeHref } from "$lib/notes/links";
   import {
     baseName,
-    deleteImage,
     downloadImage,
     relativeHref,
     saveImageFile,
@@ -93,6 +96,8 @@
   let saveQueue: Promise<boolean> = Promise.resolve(true);
   /** Bumped per openNote call so only the latest click wins. */
   let openToken = 0;
+  /** The note being opened while `opening` is true. */
+  let openingPath: string | null = null;
 
   const canEdit = $derived(currentPath !== null && !opening);
   const folders = $derived(currentPath?.split("/").slice(0, -1) ?? []);
@@ -244,11 +249,6 @@
     editor.insertImage(relativeHref(currentPath!, path), baseName(path));
   }
 
-  async function removeImage(path: string) {
-    await deleteImage(path);
-    await refreshTree();
-  }
-
   async function openNote(path: string) {
     // Bump first, so clicking back to the open note cancels a pending switch.
     const token = ++openToken;
@@ -257,6 +257,7 @@
       return;
     }
     opening = true;
+    openingPath = path;
     try {
       // Keep the current note open if its edits could not be saved.
       if (!(await save()) || token !== openToken) return;
@@ -332,7 +333,21 @@
     if (!(await settings.chooseNotesFolder())) return; // cancelled
     // Go has switched folders: drop the old folder's note before anything
     // (an autosave, an await) can write it into the new one.
-    openToken++; // a note still opening belongs to the old folder
+    closeNote();
+    tree = [];
+    tags = [];
+    saveRecent([]); // recent paths belonged to the old folder
+    await loadNotes();
+  }
+
+  /**
+   * Close the open note without saving it, leaving the "pick a note" screen.
+   * A note still opening is cancelled too.
+   */
+  function closeNote() {
+    clearTimeout(saveTimer);
+    saveTimer = undefined;
+    openToken++;
     opening = false;
     currentPath = null;
     lastSaved = null;
@@ -341,10 +356,70 @@
     markdown = "";
     editor.setMarkdown("");
     sourceEdited = false;
-    tree = [];
-    tags = [];
-    saveRecent([]); // recent paths belonged to the old folder
-    await loadNotes();
+  }
+
+  /**
+   * Stop opening a note that is inside `path` (or is it): its file is about
+   * to move, and opening it at the old path would let autosave write it back.
+   */
+  function cancelOpeningWithin(path: string) {
+    if (opening && openingPath !== null && isWithin(openingPath, path)) {
+      openToken++;
+      opening = false;
+    }
+  }
+
+  /**
+   * Run `fn` in the save queue, so no autosave of the open note can write
+   * while it moves the note's file. Inside, use writeIfChanged, not save().
+   */
+  function exclusive<T>(fn: () => Promise<T>): Promise<T> {
+    const run = saveQueue.then(fn);
+    saveQueue = run.then(
+      () => true,
+      () => true,
+    );
+    return run;
+  }
+
+  /**
+   * Rename a note, folder or image from the sidebar. The open note is saved
+   * first and stays open at its new path.
+   */
+  function renameEntry(path: string, name: string): Promise<string> {
+    return exclusive(async () => {
+      cancelOpeningWithin(path);
+      const affected = currentPath !== null && isWithin(currentPath, path);
+      if (affected && !(await writeIfChanged())) {
+        throw new Error("The open note couldn't be saved, so it wasn't renamed.");
+      }
+      const to = await renameOnDisk(path, name);
+      if (currentPath) currentPath = movedPath(currentPath, path, to) ?? currentPath;
+      saveRecent(recent.map((p) => movedPath(p, path, to) ?? p));
+      await refreshTree();
+      void refreshTags();
+      return to;
+    });
+  }
+
+  /**
+   * Move a note, folder or image to the Trash. If that takes the open note
+   * with it, the note is saved first (so the Trash holds the latest edits)
+   * and then closed, so autosave can't write it back.
+   */
+  function deleteEntry(path: string): Promise<void> {
+    return exclusive(async () => {
+      cancelOpeningWithin(path);
+      const affected = currentPath !== null && isWithin(currentPath, path);
+      if (affected && !(await writeIfChanged())) {
+        throw new Error("The open note couldn't be saved, so it wasn't deleted.");
+      }
+      await trashEntry(path);
+      if (affected) closeNote();
+      saveRecent(recent.filter((p) => !isWithin(p, path)));
+      await refreshTree();
+      void refreshTags();
+    });
   }
 
   /** Create a note or folder from the sidebar; new notes open right away. */
@@ -473,7 +548,8 @@
     onopen={openNote}
     oncreate={createEntry}
     oninsertimage={insertImage}
-    ondeleteimage={removeImage}
+    onrename={renameEntry}
+    ondelete={deleteEntry}
     onsearch={() => (quickOpen = true)}
     onsettings={() => (settingsOpen = true)}
   />

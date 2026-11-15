@@ -5,6 +5,12 @@ import type { Node, Tag as TagBinding } from "../../../bindings/dotmd/internal/n
 
 export type { Node };
 export type EntryKind = "note" | "folder";
+/** What a Files tree row stands for. */
+export type FileKind = EntryKind | "image";
+
+export function kindOf(node: Node): FileKind {
+  return node.isDir ? "folder" : node.isImage ? "image" : "note";
+}
 export type Tag = Omit<TagBinding, "notes"> & { notes: string[] };
 
 export async function loadTree(): Promise<Node[]> {
@@ -63,6 +69,32 @@ export function createNote(path: string): Promise<string> {
 /** Create a folder (and missing parents). Resolves to its path. */
 export function createFolder(path: string): Promise<string> {
   return NotesService.CreateFolder(path);
+}
+
+/**
+ * Give a note, folder or image a new name in the same folder; a note or image
+ * keeps its extension if `name` leaves it out. Resolves to the new path.
+ */
+export function renameEntry(path: string, name: string): Promise<string> {
+  return NotesService.Rename(path, name);
+}
+
+/** Move a note, folder or image to the system Trash. */
+export function trashEntry(path: string): Promise<void> {
+  return NotesService.Delete(path);
+}
+
+/** True when `path` is `base` itself or lies inside the folder `base`. */
+export function isWithin(path: string, base: string): boolean {
+  return path === base || path.startsWith(base + "/");
+}
+
+/**
+ * Where `path` is after `from` was renamed to `to` (`from` may be `path`
+ * itself or a folder above it), or null if the rename didn't move it.
+ */
+export function movedPath(path: string, from: string, to: string): string | null {
+  return isWithin(path, from) ? to + path.slice(from.length) : null;
 }
 
 /**

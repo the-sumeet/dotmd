@@ -15,8 +15,19 @@
   import NewEntryMenu from "./new-entry-menu.svelte";
   import TreeRow from "./tree-row.svelte";
   import NewEntryDialog from "./new-entry-dialog.svelte";
-  import DeleteImageDialog from "./delete-image-dialog.svelte";
-  import { noteTitle, type EntryKind, type Node, type Tag } from "$lib/notes/notes";
+  import DeleteEntryDialog from "./delete-entry-dialog.svelte";
+  import RenameEntryDialog from "./rename-entry-dialog.svelte";
+  import {
+    isWithin,
+    kindOf,
+    movedPath,
+    notePaths,
+    noteTitle,
+    type EntryKind,
+    type FileKind,
+    type Node,
+    type Tag,
+  } from "$lib/notes/notes";
   import type { ComponentProps, Snippet } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
   import { modKey } from "$lib/platform";
@@ -29,7 +40,8 @@
     onopen,
     oncreate,
     oninsertimage,
-    ondeleteimage,
+    onrename,
+    ondelete,
     onsearch,
     onsettings,
     ...restProps
@@ -48,21 +60,60 @@
     oncreate?: (kind: EntryKind, path: string) => Promise<string>;
     /** Show an existing image (root-relative path) in the open note. */
     oninsertimage?: (path: string) => void;
-    /** Delete an image file; rejects with a user-facing message. */
-    ondeleteimage?: (path: string) => Promise<void>;
+    /**
+     * Rename a note, folder or image in place. Resolves to its new path;
+     * rejects with a user-facing message.
+     */
+    onrename?: (path: string, name: string) => Promise<string>;
+    /** Move a note, folder or image to the Trash; rejects with a user-facing message. */
+    ondelete?: (path: string) => Promise<void>;
     /** Open the quick switcher. */
     onsearch?: () => void;
     /** Open the settings dialog. */
     onsettings?: () => void;
   } = $props();
 
-  /** Image the delete dialog asks about. */
-  let deletePath = $state("");
+  type Target = { path: string; kind: FileKind };
+
+  /** Entry the rename dialog asks about. */
+  let renameTarget = $state<Target>({ path: "", kind: "note" });
+  let renameOpen = $state(false);
+
+  /** Entry the delete dialog asks about; for a folder, how many notes it holds. */
+  let deleteTarget = $state<Target & { noteCount: number }>({ path: "", kind: "note", noteCount: 0 });
   let deleteOpen = $state(false);
 
-  function requestDelete(path: string) {
-    deletePath = path;
+  function requestRename(path: string, kind: FileKind) {
+    renameTarget = { path, kind };
+    renameOpen = true;
+  }
+
+  function requestDelete(path: string, kind: FileKind, noteCount = 0) {
+    deleteTarget = { path, kind, noteCount };
     deleteOpen = true;
+  }
+
+  const renameNode = (node: Node) => requestRename(node.path, kindOf(node));
+  const deleteNode = (node: Node) =>
+    requestDelete(node.path, kindOf(node), node.isDir ? notePaths(node.children ?? []).length : 0);
+
+  async function renameEntry(path: string, name: string) {
+    if (!onrename) return;
+    const to = await onrename(path, name);
+    // Keep a renamed folder, and folders inside it, expanded.
+    for (const p of [...expanded]) {
+      const moved = movedPath(p, path, to);
+      if (moved !== null && moved !== p) {
+        expanded.delete(p);
+        expanded.add(moved);
+      }
+    }
+    reveal(to);
+  }
+
+  async function deleteEntry(path: string) {
+    await ondelete?.(path);
+    for (const p of [...expanded]) if (isWithin(p, path)) expanded.delete(p);
   }
 
   /**
@@ -167,7 +218,8 @@
           onopen={openNote}
           onnew={requestNew}
           oninsertimage={insertImage}
-          ondeleteimage={requestDelete}
+          onrename={renameNode}
+          ondelete={deleteNode}
         />
       {:else}
         <p class="px-2 py-1 text-sm text-sidebar-foreground/40">No notes yet</p>
@@ -199,7 +251,14 @@
               onselect={() => openNote(path)}
             >
               {#snippet icon()}<FileTextIcon />{/snippet}
-              {#snippet actions()}<NoteActionsMenu {path} {activePath} />{/snippet}
+              {#snippet actions()}
+                <NoteActionsMenu
+                  {path}
+                  {activePath}
+                  onrename={() => requestRename(path, "note")}
+                  ondelete={() => requestDelete(path, "note")}
+                />
+              {/snippet}
             </TreeRow>
           {/each}
         {/if}
@@ -245,8 +304,18 @@
   oncreate={createEntry}
 />
 
-<DeleteImageDialog
+<RenameEntryDialog
+  bind:open={renameOpen}
+  kind={renameTarget.kind}
+  path={renameTarget.path}
+  onrename={renameEntry}
+/>
+
+<DeleteEntryDialog
   bind:open={deleteOpen}
-  path={deletePath}
-  ondelete={ondeleteimage}
+  kind={deleteTarget.kind}
+  path={deleteTarget.path}
+  noteCount={deleteTarget.noteCount}
+  holdsOpenNote={activePath !== null && isWithin(activePath, deleteTarget.path)}
+  ondelete={deleteEntry}
 />

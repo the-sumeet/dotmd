@@ -1,11 +1,12 @@
-<!-- "⋯" menu on a note or image row. "Copy relative path" copies the href
+<!-- "⋯" menu on a Files tree row. "Copy relative path" copies the href
      that links the open note to this file, ready to paste into the link input.
-     Rows that can be deleted (images) also get "Delete…". -->
+     "Rename…" and "Delete…" show when the row passes handlers for them. -->
 <script lang="ts">
   import { onDestroy } from "svelte";
   import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
   import CheckIcon from "@lucide/svelte/icons/check";
   import LinkIcon from "@lucide/svelte/icons/link";
+  import PencilIcon from "@lucide/svelte/icons/pencil";
   import Trash2Icon from "@lucide/svelte/icons/trash-2";
   import { Clipboard } from "@wailsio/runtime";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
@@ -14,12 +15,18 @@
   let {
     path,
     activePath,
+    copy: copyable = true,
+    onrename,
     ondelete,
   }: {
     /** The file this row stands for. */
     path: string;
     /** The open note, which links are relative to. */
     activePath: string | null;
+    /** Offer "Copy relative path" (folders can't be linked to). */
+    copy?: boolean;
+    /** Ask to rename the file (e.g. open a dialog); omitted, no item shows. */
+    onrename?: () => void;
     /** Ask to delete the file (e.g. open a confirm dialog); omitted, no item shows. */
     ondelete?: () => void;
   } = $props();
@@ -78,17 +85,24 @@
     {/snippet}
   </DropdownMenu.Trigger>
   <DropdownMenu.Content align="start" class="w-56">
-    <DropdownMenu.Item disabled={!activePath} onSelect={copy}>
-      {#if copied}
-        <CheckIcon /> Copied
-      {:else if failed}
-        <LinkIcon /> Couldn't copy
-      {:else}
-        <LinkIcon /> Copy relative path
-      {/if}
-    </DropdownMenu.Item>
+    {#if copyable}
+      <DropdownMenu.Item disabled={!activePath} onSelect={copy}>
+        {#if copied}
+          <CheckIcon /> Copied
+        {:else if failed}
+          <LinkIcon /> Couldn't copy
+        {:else}
+          <LinkIcon /> Copy relative path
+        {/if}
+      </DropdownMenu.Item>
+    {/if}
+    {#if onrename}
+      <DropdownMenu.Item onSelect={onrename}>
+        <PencilIcon /> Rename…
+      </DropdownMenu.Item>
+    {/if}
     {#if ondelete}
-      <DropdownMenu.Separator />
+      {#if copyable || onrename}<DropdownMenu.Separator />{/if}
       <DropdownMenu.Item variant="destructive" onSelect={ondelete}>
         <Trash2Icon /> Delete…
       </DropdownMenu.Item>

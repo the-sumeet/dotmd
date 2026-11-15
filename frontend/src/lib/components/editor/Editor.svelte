@@ -50,6 +50,14 @@
   let revision = $state(0);
   let frontmatter = "";
   let syncTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The note whose folder image srcs last pointed at. */
+  let imagesNote: string | null = null;
+
+  function refreshImages() {
+    if (!editor || editor.isDestroyed) return;
+    refreshImageSrcs(editor.view.dom, notePath);
+    imagesNote = notePath;
+  }
 
   onMount(() => {
     const { frontmatter: fm, body } = splitFrontmatter(value);
@@ -94,6 +102,12 @@
     if (editor && editor.isEditable !== editable) editor.setEditable(editable, false);
   });
 
+  // The open note was renamed or moved with its folder: point its images at
+  // the new folder (switching notes is handled by setMarkdown).
+  $effect(() => {
+    if (notePath !== imagesNote) refreshImages();
+  });
+
   onDestroy(() => {
     flush();
     editor?.destroy();
@@ -127,7 +141,7 @@
     editor.commands.setContent(body, { contentType: "markdown", emitUpdate: false });
     const { doc, plugins, selection } = editor.state;
     editor.view.updateState(EditorState.create({ doc, plugins, selection }));
-    refreshImageSrcs(editor.view.dom, notePath);
+    refreshImages();
   }
 
   export function focus() {

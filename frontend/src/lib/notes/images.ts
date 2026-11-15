@@ -8,11 +8,6 @@ const FILE_ROUTE = "/notes-file/";
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|svg)$/i;
 
-/** Delete an image file. Links to it in notes are left as they are. */
-export function deleteImage(path: string): Promise<void> {
-  return NotesService.DeleteImage(path);
-}
-
 /** Save `file` to the assets folder beside `note`; resolves to the href from the note. */
 export async function saveImageFile(note: string, file: File): Promise<string> {
   return NotesService.SaveImage(note, file.name, await toBase64(file));

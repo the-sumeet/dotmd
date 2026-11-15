@@ -1,5 +1,6 @@
 <!-- Dialog asking for the name of a new note or folder. -->
 <script lang="ts">
+  import { tick } from "svelte";
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
@@ -44,9 +45,13 @@
       open = false;
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
-      input?.focus();
     } finally {
       busy = false;
+    }
+    // The field is disabled while busy; focus it once it's enabled again.
+    if (error) {
+      await tick();
+      input?.focus();
     }
   }
 </script>
