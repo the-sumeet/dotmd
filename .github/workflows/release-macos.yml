@@ -1,0 +1,113 @@
+name: Release macOS DMG
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-macos-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dmg:
+    # Xcode 26's actool is needed to compile build/appicon.icon into Assets.car.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        # Install exactly what package-lock.json pins. The Taskfile's later
+        # `npm install` is then a no-op.
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Wails CLI
+        # Use the same Wails version the app is built against in go.mod.
+        run: |
+          WAILS_VERSION=$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
+          echo "Installing wails3 $WAILS_VERSION"
+          go install github.com/wailsapp/wails/v3/cmd/wails3@"$WAILS_VERSION"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Compute version
+        run: |
+          PLIST=build/darwin/Info.plist
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            # Info.plist versions must be numeric (e.g. 1.2.3), so drop any
+            # prerelease suffix such as -beta.1.
+            BUNDLE_VERSION="${VERSION%%-*}"
+            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $BUNDLE_VERSION" "$PLIST"
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUNDLE_VERSION" "$PLIST"
+          else
+            BASE=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST")
+            VERSION="$BASE-dev.${GITHUB_SHA::7}"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Building dotmd $VERSION"
+
+      - name: Build universal app bundle
+        run: wails3 task darwin:package:universal
+
+      - name: Check dependency files are unchanged
+        # The build runs `go mod tidy` and `npm install`. If either changed a
+        # committed file, the build used dependencies that aren't in the repo.
+        run: git diff --exit-code -- go.mod go.sum frontend/package.json frontend/package-lock.json
+
+      - name: Create DMG
+        run: wails3 task darwin:create:dmg
+
+      - name: Rename and checksum
+        run: |
+          ARCHS=$(lipo -archs bin/dotmd.app/Contents/MacOS/dotmd)
+          echo "Architectures: $ARCHS"
+          for arch in x86_64 arm64; do
+            if [[ " $ARCHS " != *" $arch "* ]]; then
+              echo "::error::app binary is missing $arch (got: $ARCHS)"
+              exit 1
+            fi
+          done
+          DMG="dotmd-$VERSION-universal.dmg"
+          mv bin/dotmd.dmg "bin/$DMG"
+          (cd bin && shasum -a 256 "$DMG" > "$DMG.sha256")
+          echo "DMG=$DMG" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dotmd-${{ env.VERSION }}-macos-universal
+          path: |
+            bin/${{ env.DMG }}
+            bin/${{ env.DMG }}.sha256
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        # Only a tag push publishes. A manual run, even from a tag, just uploads
+        # the workflow artifact above.
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          FILES=("bin/$DMG" "bin/$DMG.sha256")
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "${FILES[@]}" --clobber
+          else
+            FLAGS=()
+            [[ "$GITHUB_REF_NAME" == *-* ]] && FLAGS+=(--prerelease)
+            gh release create "$GITHUB_REF_NAME" "${FILES[@]}" \
+              --title "dotmd $VERSION" --generate-notes "${FLAGS[@]}"
+          fi
