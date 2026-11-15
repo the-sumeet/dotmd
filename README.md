@@ -22,6 +22,22 @@ Congratulations on generating your Wails3 application! This README will guide yo
 
    This will create a production-ready executable in the `build` directory.
 
+## Releasing
+
+Pushing a `v*` tag builds a universal macOS DMG and attaches it to a GitHub Release
+([workflow](.github/workflows/release-macos.yml)):
+
+```
+git tag v1.2.0 && git push origin v1.2.0
+```
+
+- The tag sets the app version (`v1.2.0` → `1.2.0`). Tags with a hyphen, like `v1.2.0-beta.1`, become prereleases.
+- Running the workflow manually from the Actions tab builds the DMG as a downloadable artifact without publishing a Release.
+- The app is ad-hoc signed, not notarized. On first launch, right-click the app and choose **Open**, or run
+  `xattr -dr com.apple.quarantine /Applications/dotmd.app`.
+
+To build the DMG locally: `wails3 task darwin:package:universal && wails3 task darwin:create:dmg` (output in `bin/`).
+
 ## Exploring Wails3 Features
 
 Now that you have your project set up, it's time to explore the features that Wails3 offers:
