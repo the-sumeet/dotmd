@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { Browser, Events } from "@wailsio/runtime";
   import { Check, FilePlus, LoaderCircle, PenLine, Search, X } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
@@ -57,6 +57,10 @@
   /** Recently opened notes kept for the quick switcher. */
   const RECENT_LIMIT = 8;
   const RECENT_KEY = "dotmd:recent";
+  /** A reopened note stops holding its scroll position after this long. */
+  const RESTORE_WINDOW_MS = 5000;
+  /** Input on the note pane that means the user is scrolling it themselves. */
+  const SCROLL_INPUT_EVENTS = ["wheel", "touchstart", "pointerdown"] as const;
 
   /** The open note as plain markdown — the single source of truth. */
   let markdown = $state("");
@@ -92,6 +96,10 @@
   /** Desktop sidebar shown; the shadcn sidebar keeps this in a cookie. */
   let sidebarOpen = $state(!document.cookie.includes("sidebar_state=false"));
   let scroller = $state<HTMLElement>();
+  /** Where each note opened this session was scrolled to, by path. */
+  const scrollPositions = new Map<string, number>();
+  /** The open note's scroll restore, while it still holds the note at `top`. */
+  let restoring: { top: number; stop: () => void } | undefined;
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   let treeTimer: ReturnType<typeof setTimeout> | undefined;
   /** Saves run one after another, so an older write never lands last. */
@@ -135,6 +143,7 @@
 
   function setMode(next: Mode) {
     if (next === mode) return;
+    stopRestoring(); // the other view's height has nothing to do with the offset
     if (next === "markdown") {
       editor.flush();
     } else {
@@ -256,6 +265,60 @@
     editor.insertImage(relativeHref(currentPath!, path), baseName(path));
   }
 
+  /** Note where the open note is scrolled to, before another replaces it. */
+  function rememberScroll() {
+    if (!currentPath || !scroller) return;
+    // Mid-restore the page may still be too short to reach the saved spot
+    // (images loading), so keep the spot rather than where it got to.
+    scrollPositions.set(currentPath, restoring ? restoring.top : scroller.scrollTop);
+  }
+
+  function stopRestoring() {
+    restoring?.stop();
+  }
+
+  /**
+   * Scroll a newly opened note to `top`. Images take no space until they
+   * load, so the offset is re-applied whenever the note's layout changes,
+   * until the user scrolls or types, or RESTORE_WINDOW_MS passes.
+   */
+  async function restoreScroll(top: number) {
+    stopRestoring();
+    const el = scroller;
+    const content = el?.firstElementChild;
+    if (!el || !content) return;
+    if (top <= 0) {
+      el.scrollTop = 0;
+      return;
+    }
+    const apply = () => {
+      el.scrollTop = top;
+    };
+    const observer = new ResizeObserver(apply);
+    const onKeydown = (e: KeyboardEvent) => {
+      if (!isMod(e)) stop(); // shortcuts (⌘P, ⌘S, …) don't scroll
+    };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stop = () => {
+      clearTimeout(timer);
+      observer.disconnect();
+      for (const type of SCROLL_INPUT_EVENTS) el.removeEventListener(type, stop);
+      window.removeEventListener("keydown", onKeydown, true);
+      if (restoring?.stop === stop) restoring = undefined;
+    };
+    restoring = { top, stop };
+    // Let the new note (and the source textarea's height) lay out first;
+    // a frame callback still runs before the next paint, so nothing flashes.
+    await tick();
+    await new Promise(requestAnimationFrame);
+    if (restoring?.stop !== stop) return; // stopped, or another note opened
+    apply();
+    observer.observe(content);
+    for (const type of SCROLL_INPUT_EVENTS) el.addEventListener(type, stop, { passive: true });
+    window.addEventListener("keydown", onKeydown, true);
+    timer = setTimeout(stop, RESTORE_WINDOW_MS);
+  }
+
   async function openNote(path: string) {
     // Bump first, so clicking back to the open note cancels a pending switch.
     const token = ++openToken;
@@ -277,6 +340,7 @@
         return;
       }
       if (token !== openToken) return;
+      rememberScroll();
       lastSaved = content;
       saveFailed = false;
       markdown = content;
@@ -285,7 +349,7 @@
       sourceEdited = false;
       notice = "";
       remember(path);
-      if (scroller) scroller.scrollTop = 0;
+      void restoreScroll(scrollPositions.get(path) ?? 0);
     } finally {
       if (token === openToken) opening = false;
     }
@@ -351,6 +415,7 @@
         tree = [];
         tags = [];
         saveRecent([]); // recent paths belonged to the old folder
+        scrollPositions.clear();
         return true;
       } finally {
         switchingFolder = false;
@@ -366,6 +431,7 @@
   function closeNote() {
     clearTimeout(saveTimer);
     saveTimer = undefined;
+    stopRestoring();
     openToken++;
     opening = false;
     currentPath = null;
@@ -415,6 +481,11 @@
       const to = await renameOnDisk(path, name);
       if (currentPath) currentPath = movedPath(currentPath, path, to) ?? currentPath;
       saveRecent(recent.map((p) => movedPath(p, path, to) ?? p));
+      const moved = [...scrollPositions].map(
+        ([p, top]) => [movedPath(p, path, to) ?? p, top] as const,
+      );
+      scrollPositions.clear();
+      for (const [p, top] of moved) scrollPositions.set(p, top);
       tags = withMovedNotes(tags, path, to);
       await refreshTree();
       return to;
@@ -436,6 +507,9 @@
       await trashEntry(path);
       if (affected) closeNote();
       saveRecent(recent.filter((p) => !isWithin(p, path)));
+      for (const p of [...scrollPositions.keys()]) {
+        if (isWithin(p, path)) scrollPositions.delete(p);
+      }
       tags = withMovedNotes(tags, path, null);
       await refreshTree();
     });
