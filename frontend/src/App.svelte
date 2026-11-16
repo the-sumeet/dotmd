@@ -3,7 +3,8 @@
   import { Browser, Events } from "@wailsio/runtime";
   import { Check, FilePlus, LoaderCircle, PenLine, Search, X } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
-  import Editor from "$lib/components/editor/Editor.svelte";
+  import Editor, { type EditorSnapshot } from "$lib/components/editor/Editor.svelte";
+  import TabBar from "$lib/components/tab-bar.svelte";
   import { splitFrontmatter } from "$lib/editor/frontmatter";
   import sample from "$lib/editor/sample.md?raw";
   import * as Breadcrumb from "$lib/components/ui/breadcrumb/index.js";
@@ -39,6 +40,7 @@
     type Tag,
   } from "$lib/notes/notes";
   import { canOpenExternally, isExternalLink, normalizeHref } from "$lib/notes/links";
+  import { loadTabs, movedTab, neighborAfterClose, saveTabs, withTab } from "$lib/notes/tabs";
   import {
     baseName,
     downloadImage,
@@ -61,6 +63,8 @@
   const RESTORE_WINDOW_MS = 5000;
   /** Input on the note pane that means the user is scrolling it themselves. */
   const SCROLL_INPUT_EVENTS = ["wheel", "touchstart", "pointerdown"] as const;
+  /** Closed tabs kept for reopening (⇧⌘T). */
+  const CLOSED_TABS_LIMIT = 20;
 
   /** The open note as plain markdown — the single source of truth. */
   let markdown = $state("");
@@ -89,7 +93,18 @@
   /** True once the notes folder has been read (or failed to). */
   let loaded = $state(false);
   let quickOpen = $state(false);
+  /** The quick switcher opens its pick in a new tab (⌘T, "+"). */
+  let quickOpenNewTab = $state(false);
   let settingsOpen = $state(false);
+  /**
+   * Open notes, in tab order. The active tab is `currentPath`; a note is
+   * open in at most one tab. Remembered across launches.
+   */
+  let tabs = $state<string[]>([]);
+  /** Tabs closed this session, most recent last, for ⇧⌘T. */
+  let closedTabs: string[] = [];
+  /** Editor state (undo history, selection) of open tabs not shown, by path. */
+  const editorStates = new Map<string, EditorSnapshot>();
   /** Notes opened lately, most recent first; remembered across launches. */
   let recent = $state<string[]>(loadRecent());
   let sidebar: AppSidebar;
@@ -319,7 +334,23 @@
     timer = setTimeout(stop, RESTORE_WINDOW_MS);
   }
 
-  async function openNote(path: string) {
+  /**
+   * Keep the open note's editor state (undo history, selection) for when its
+   * tab is shown again. In markdown mode with source edits the editor is
+   * stale, so nothing is kept.
+   */
+  function stashEditor() {
+    if (!currentPath) return;
+    const snap = mode === "edit" || !sourceEdited ? editor.snapshot() : null;
+    if (snap) editorStates.set(currentPath, snap);
+    else editorStates.delete(currentPath);
+  }
+
+  /**
+   * Show a note. A note already open in a tab switches to that tab; any
+   * other replaces the active tab, or gets a tab of its own with `newTab`.
+   */
+  async function openNote(path: string, { newTab = false } = {}) {
     // Bump first, so clicking back to the open note cancels a pending switch.
     const token = ++openToken;
     if (path === currentPath) {
@@ -341,14 +372,23 @@
       }
       if (token !== openToken) return;
       rememberScroll();
+      stashEditor();
+      const from = currentPath;
       lastSaved = content;
       saveFailed = false;
       markdown = content;
       currentPath = path;
-      editor.setMarkdown(content);
+      // Its undo history still applies if the file hasn't changed since.
+      const snap = editorStates.get(path);
+      if (snap?.markdown === content) editor.restore(snap);
+      else editor.setMarkdown(content);
+      editorStates.delete(path); // the editor holds it now
       sourceEdited = false;
       notice = "";
       remember(path);
+      const at = from === null ? -1 : tabs.indexOf(from);
+      tabs = withTab(tabs, path, at, !newTab && at >= 0);
+      if (from !== null && !tabs.includes(from)) editorStates.delete(from); // replaced
       void restoreScroll(scrollPositions.get(path) ?? 0);
     } finally {
       if (token === openToken) opening = false;
@@ -359,7 +399,7 @@
    * Follow a link from the open note: URLs open in the system browser, and
    * relative paths open the note they point to.
    */
-  async function followLink(raw: string) {
+  async function followLink(raw: string, newTab = false) {
     const href = normalizeHref(raw); // "example.com" is a web address, not a note
     try {
       if (isExternalLink(href)) {
@@ -368,10 +408,97 @@
         return;
       }
       if (href.startsWith("#") || !currentPath) return; // headings: not supported yet
-      await openNote(await resolveLink(currentPath, href));
+      await openNote(await resolveLink(currentPath, href), { newTab });
     } catch (err) {
       notice = `Couldn't open link: ${errorText(err)}`;
     }
+  }
+
+  /** Drop a tab that is not shown, keeping it for ⇧⌘T. */
+  function forgetTab(path: string) {
+    // Still opening: cancel it, or it would land in the active tab's place.
+    if (opening && openingPath === path) {
+      openToken++;
+      opening = false;
+    }
+    tabs = tabs.filter((p) => p !== path);
+    editorStates.delete(path);
+    closedTabs = [...closedTabs.filter((p) => p !== path), path].slice(-CLOSED_TABS_LIMIT);
+  }
+
+  /**
+   * Close a tab. Closing the active one shows the tab to its right (else its
+   * left) once the note is saved; if it can't be saved, the tab stays open.
+   */
+  async function closeTab(path: string) {
+    if (!tabs.includes(path)) return;
+    if (path === currentPath) {
+      const next = neighborAfterClose(tabs, path);
+      if (next) {
+        await openNote(next);
+        if (currentPath === path) return; // not saved, or the open failed
+      } else {
+        if (!(await save())) return;
+        if (currentPath === path) closeNote();
+      }
+    }
+    forgetTab(path);
+  }
+
+  /** Close every tab but `keep`, which is shown. */
+  async function closeOtherTabs(keep: string) {
+    if (currentPath !== keep) {
+      await openNote(keep);
+      if (currentPath !== keep) return;
+    }
+    for (const p of [...tabs]) if (p !== keep) forgetTab(p);
+  }
+
+  /** Close the tabs after `path`; if one of them is shown, `path` is shown instead. */
+  async function closeTabsToRight(path: string) {
+    const right = tabs.slice(tabs.indexOf(path) + 1);
+    if (currentPath !== null && right.includes(currentPath)) {
+      await openNote(path);
+      if (currentPath !== path) return;
+    }
+    for (const p of right) forgetTab(p);
+  }
+
+  /** Open the most recently closed tab whose note still exists. */
+  async function reopenClosedTab() {
+    const known = new Set(allNotes);
+    while (closedTabs.length) {
+      const path = closedTabs.at(-1)!;
+      if (!known.has(path) || tabs.includes(path)) {
+        closedTabs.pop();
+        continue;
+      }
+      await openNote(path, { newTab: true });
+      // Kept if the open failed (say, the shown note couldn't be saved).
+      if (currentPath === path) closedTabs = closedTabs.filter((p) => p !== path);
+      return;
+    }
+  }
+
+  /** Show the next (`by` = 1) or previous (-1) tab, wrapping around. */
+  function cycleTab(by: 1 | -1) {
+    if (!tabs.length) return;
+    // Repeated quickly, step on from the tab still opening.
+    const from = opening && openingPath !== null ? openingPath : currentPath;
+    const i = from === null ? -1 : tabs.indexOf(from);
+    const next = i < 0 ? (by > 0 ? 0 : tabs.length - 1) : (i + by + tabs.length) % tabs.length;
+    void openNote(tabs[next]);
+  }
+
+  /** Show tab `n` (1-based); 9 is always the last tab, as in browsers. */
+  function goToTab(n: number) {
+    const path = n === 9 ? tabs.at(-1) : tabs[n - 1];
+    if (path) void openNote(path);
+  }
+
+  function showQuickOpen(newTab: boolean) {
+    quickOpenNewTab = newTab;
+    quickOpen = true;
   }
 
   /**
@@ -387,8 +514,18 @@
         tree = await loadTree();
       }
       void refreshTags();
-      const first = notePaths(tree)[0];
-      if (first) await openNote(first);
+      // Bring back the tabs open last time, minus notes gone since.
+      const paths = notePaths(tree);
+      const known = new Set(paths);
+      const saved = loadTabs();
+      const restored = saved.paths.filter((p) => known.has(p));
+      if (restored.length) {
+        tabs = restored;
+        const active = saved.active !== null && restored.includes(saved.active);
+        await openNote(active ? saved.active! : restored[0]);
+      } else if (paths[0]) {
+        await openNote(paths[0]);
+      }
     } catch (err) {
       notice = `Couldn't load notes: ${errorText(err)}`;
     }
@@ -416,6 +553,11 @@
         tags = [];
         saveRecent([]); // recent paths belonged to the old folder
         scrollPositions.clear();
+        tabs = [];
+        closedTabs = [];
+        editorStates.clear();
+        // Now, not via the effect: loadNotes reads them back straight away.
+        saveTabs({ paths: [], active: null });
         return true;
       } finally {
         switchingFolder = false;
@@ -480,46 +622,64 @@
       }
       const to = await renameOnDisk(path, name);
       if (currentPath) currentPath = movedPath(currentPath, path, to) ?? currentPath;
-      saveRecent(recent.map((p) => movedPath(p, path, to) ?? p));
-      const moved = [...scrollPositions].map(
-        ([p, top]) => [movedPath(p, path, to) ?? p, top] as const,
-      );
-      scrollPositions.clear();
-      for (const [p, top] of moved) scrollPositions.set(p, top);
+      const move = (p: string) => movedPath(p, path, to) ?? p;
+      saveRecent(recent.map(move));
+      tabs = tabs.map(move);
+      closedTabs = closedTabs.map(move);
+      rekey(scrollPositions, move);
+      rekey(editorStates, move);
       tags = withMovedNotes(tags, path, to);
       await refreshTree();
       return to;
     });
   }
 
+  /** Re-key `map` after a rename moved some of its paths. */
+  function rekey<T>(map: Map<string, T>, move: (path: string) => string) {
+    const entries = [...map].map(([p, v]) => [move(p), v] as const);
+    map.clear();
+    for (const [p, v] of entries) map.set(p, v);
+  }
+
   /**
    * Move a note, folder or image to the Trash. If that takes the open note
    * with it, the note is saved first (so the Trash holds the latest edits)
-   * and then closed, so autosave can't write it back.
+   * and then closed, so autosave can't write it back; the nearest tab left
+   * is shown instead. Tabs of trashed notes close.
    */
-  function deleteEntry(path: string): Promise<void> {
-    return exclusive(async () => {
+  async function deleteEntry(path: string): Promise<void> {
+    const next = await exclusive(async () => {
       cancelOpeningWithin(path);
       const affected = currentPath !== null && isWithin(currentPath, path);
       if (affected && !(await writeIfChanged())) {
         throw new Error("The open note couldn't be saved, so it wasn't deleted.");
       }
       await trashEntry(path);
-      if (affected) closeNote();
-      saveRecent(recent.filter((p) => !isWithin(p, path)));
-      for (const p of [...scrollPositions.keys()]) {
-        if (isWithin(p, path)) scrollPositions.delete(p);
+      const kept = (p: string) => !isWithin(p, path);
+      let next: string | null = null;
+      if (affected) {
+        next = neighborAfterClose(tabs, currentPath!, (p) => !kept(p));
+        closeNote();
+      }
+      tabs = tabs.filter(kept);
+      closedTabs = closedTabs.filter(kept);
+      saveRecent(recent.filter(kept));
+      for (const map of [scrollPositions, editorStates]) {
+        for (const p of [...map.keys()]) if (!kept(p)) map.delete(p);
       }
       tags = withMovedNotes(tags, path, null);
       await refreshTree();
+      return next;
     });
+    // Outside the save queue: opening a note waits on it.
+    if (next && currentPath === null) await openNote(next);
   }
 
   /** Create a note or folder from the sidebar; new notes open right away. */
   async function createEntry(kind: EntryKind, name: string) {
     const path = kind === "note" ? await createNote(name) : await createFolder(name);
     tree = await loadTree();
-    if (kind === "note") await openNote(path);
+    if (kind === "note") await openNote(path, { newTab: true });
     return path;
   }
 
@@ -566,20 +726,59 @@
    * or covered.
    */
   function onKeydown(e: KeyboardEvent) {
-    if (!isMod(e)) return;
+    const mod = isMod(e);
     const key = shortcutKey(e);
-    // Shift is allowed for "/" only, where layouts need it to type one.
-    if (e.shiftKey && key !== "/") return;
-    if (key === "s") {
+    if (mod && !e.shiftKey && key === "s") {
       e.preventDefault();
       void save();
       return;
     }
-    if (dialogOpen()) return;
+    if (dialogOpen() || e.defaultPrevented) return; // e.g. handled by the editor
+    // Ctrl+Tab and Ctrl+PageDown/PageUp switch tabs; on macOS Ctrl isn't ⌘.
+    if (e.ctrlKey && !e.metaKey && !e.altKey) {
+      const by =
+        e.key === "Tab" ? (e.shiftKey ? -1 : 1)
+        : e.shiftKey ? 0
+        : e.key === "PageDown" ? 1
+        : e.key === "PageUp" ? -1
+        : 0;
+      if (by) {
+        e.preventDefault();
+        cycleTab(by);
+        return;
+      }
+    }
+    if (!mod) return;
+    // ⌘1–⌘9 by physical key, so AZERTY (where the key types "&" unshifted)
+    // works too. Never with Shift: ⌘⇧7/8/9 make lists in the editor, and
+    // some layouts type ⌘/ as Shift+7.
+    const digit = /^Digit([1-9])$/.exec(e.code);
+    if (digit && !e.shiftKey) {
+      e.preventDefault();
+      goToTab(Number(digit[1]));
+      return;
+    }
+    // Shift is allowed for "/", where layouts need it to type one, and for
+    // these tab shortcuts.
+    if (e.shiftKey && key !== "/") {
+      // Shift turns "[" into "{", so brackets match the physical key.
+      if (e.code === "BracketRight") cycleTab(1);
+      else if (e.code === "BracketLeft") cycleTab(-1);
+      else if (key === "t") void reopenClosedTab();
+      else return;
+      e.preventDefault();
+      return;
+    }
     switch (key) {
       case "p":
       case "o":
-        quickOpen = true;
+        showQuickOpen(false);
+        break;
+      case "t":
+        showQuickOpen(true);
+        break;
+      case "w":
+        if (currentPath) void closeTab(currentPath);
         break;
       case "n":
         sidebar.newNote();
@@ -605,6 +804,12 @@
     if (!dirty) return "saved";
     // A failed save isn't retried until the next edit, so don't claim one is running.
     return saveFailed ? "unsaved" : "saving";
+  });
+
+  // Remember the open tabs for the next launch, once the saved ones are back.
+  $effect(() => {
+    const state = { paths: tabs, active: currentPath };
+    if (loaded) saveTabs(state);
   });
 
   // Autosave once edits pause.
@@ -640,22 +845,32 @@
     {tree}
     {tags}
     activePath={currentPath}
-    onopen={openNote}
+    onopen={(path, newTab) => openNote(path, { newTab })}
     oncreate={createEntry}
     oninsertimage={insertImage}
     onrename={renameEntry}
     ondelete={deleteEntry}
-    onsearch={() => (quickOpen = true)}
+    onsearch={() => showQuickOpen(false)}
     onsettings={() => (settingsOpen = true)}
   />
   <Sidebar.Inset class="h-svh overflow-hidden">
-    <header
-      class={[
-        "flex h-12 shrink-0 items-center gap-2 border-b border-border/70 bg-background px-3",
+    <TabBar
+      {tabs}
+      active={currentPath}
+      class={
         // Clear the macOS window buttons whenever the sidebar isn't beside
-        // the header: collapsed, or a sheet in a narrow window.
-        isMac && (!sidebarOpen || mobile.current) && "ps-20",
-      ]}
+        // the tabs: collapsed, or a sheet in a narrow window.
+        isMac && (!sidebarOpen || mobile.current) ? "ps-20" : undefined
+      }
+      onactivate={(path) => void openNote(path)}
+      onclose={(path) => void closeTab(path)}
+      oncloseothers={(path) => void closeOtherTabs(path)}
+      oncloseright={(path) => void closeTabsToRight(path)}
+      onreorder={(from, to) => (tabs = movedTab(tabs, from, to))}
+      onnew={() => showQuickOpen(true)}
+    />
+    <header
+      class="flex h-12 shrink-0 items-center gap-2 border-b border-border/70 bg-background px-3"
       style="--wails-draggable: drag"
     >
       <Sidebar.Trigger
@@ -786,7 +1001,8 @@
           ></textarea>
         {/if}
 
-        {#if loaded && !currentPath}
+        <!-- Not while a note opens, e.g. the tab next to a deleted note. -->
+        {#if loaded && !currentPath && !opening}
           <div class="flex flex-col items-center gap-4 pt-[18vh] text-center">
             <p class="text-sm text-muted-foreground">
               {allNotes.length ? "Pick a note from the sidebar, or" : "You don't have any notes yet."}
@@ -797,7 +1013,7 @@
                 <kbd class="ms-1 font-sans text-muted-foreground">{modKey}N</kbd>
               </Button>
               {#if allNotes.length}
-                <Button variant="outline" size="sm" onclick={() => (quickOpen = true)}>
+                <Button variant="outline" size="sm" onclick={() => showQuickOpen(false)}>
                   <Search data-icon="inline-start" /> Go to note
                   <kbd class="ms-1 font-sans text-muted-foreground">{modKey}P</kbd>
                 </Button>
@@ -810,5 +1026,11 @@
   </Sidebar.Inset>
 </Sidebar.Provider>
 
-<QuickOpen bind:open={quickOpen} notes={allNotes} {recent} onopen={openNote} />
+<QuickOpen
+  bind:open={quickOpen}
+  newTab={quickOpenNewTab}
+  notes={allNotes}
+  {recent}
+  onopen={(path, newTab) => openNote(path, { newTab })}
+/>
 <SettingsDialog bind:open={settingsOpen} onchoosefolder={changeNotesFolder} />

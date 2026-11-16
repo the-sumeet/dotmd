@@ -1,6 +1,8 @@
 <!--
   Quick switcher (⌘P): type part of a note's name or folder, pick with the
   arrow keys and Enter. With no query it lists recently opened notes first.
+  ⌘Enter (or ⌘-click) opens the note in a new tab; opened with `newTab`
+  (⌘T), every pick does.
 -->
 <script lang="ts">
   import FileTextIcon from "@lucide/svelte/icons/file-text";
@@ -10,11 +12,13 @@
   import * as Dialog from "$lib/components/ui/dialog/index.js";
   import { noteTitle } from "$lib/notes/notes";
   import { cn } from "$lib/utils.js";
+  import { isMod } from "$lib/platform";
 
   let {
     open = $bindable(false),
     notes,
     recent = [],
+    newTab = false,
     onopen,
   }: {
     open?: boolean;
@@ -22,7 +26,9 @@
     notes: string[];
     /** Recently opened notes, most recent first. */
     recent?: string[];
-    onopen: (path: string) => void;
+    /** Open the picked note in a new tab rather than the active one. */
+    newTab?: boolean;
+    onopen: (path: string, newTab: boolean) => void;
   } = $props();
 
   /** Results shown at once; typing narrows the rest. */
@@ -79,10 +85,10 @@
     }
   });
 
-  function choose(path: string | undefined) {
+  function choose(path: string | undefined, inNewTab = false) {
     if (!path) return;
     open = false;
-    onopen(path);
+    onopen(path, newTab || inNewTab);
   }
 
   function move(by: number) {
@@ -94,7 +100,7 @@
   function onkeydown(e: KeyboardEvent) {
     if (e.key === "ArrowDown" || (e.ctrlKey && e.key === "n")) move(1);
     else if (e.key === "ArrowUp" || (e.ctrlKey && e.key === "p")) move(-1);
-    else if (e.key === "Enter" && !e.isComposing) choose(results[selected]);
+    else if (e.key === "Enter" && !e.isComposing) choose(results[selected], isMod(e));
     else return;
     e.preventDefault();
     e.stopPropagation(); // Ctrl+N/P here mustn't also reach the app shortcuts
@@ -114,7 +120,9 @@
       input?.focus();
     }}
   >
-    <DialogPrimitive.Title class="sr-only">Go to note</DialogPrimitive.Title>
+    <DialogPrimitive.Title class="sr-only">
+      {newTab ? "Open note in new tab" : "Go to note"}
+    </DialogPrimitive.Title>
     <div class="flex items-center gap-2 border-b px-3">
       <SearchIcon class="size-4 shrink-0 text-muted-foreground" />
       <input
@@ -122,7 +130,7 @@
         bind:value={query}
         oninput={() => (selected = 0)}
         {onkeydown}
-        placeholder="Go to note…"
+        placeholder={newTab ? "Open in new tab…" : "Go to note…"}
         aria-label="Note name"
         aria-controls="quick-open-results"
         aria-activedescendant={results.length ? `quick-open-${selected}` : undefined}
@@ -162,7 +170,7 @@
             i === selected && "bg-accent text-accent-foreground",
           )}
           onpointermove={() => (selected = i)}
-          onclick={() => choose(path)}
+          onclick={(e) => choose(path, isMod(e))}
           onkeydown={() => {}}
         >
           <FileTextIcon class="size-4 shrink-0 text-muted-foreground" />

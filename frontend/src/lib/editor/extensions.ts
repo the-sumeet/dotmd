@@ -84,8 +84,8 @@ export interface ExtensionOptions {
   bubbleMenu: HTMLElement;
   tableMenu: HTMLElement;
   linkMenu: HTMLElement;
-  /** Called with a link's raw href when it is Cmd/Ctrl+clicked. */
-  onOpenLink: (href: string) => void;
+  /** Called with a link's raw href when it is Cmd/Ctrl+clicked (`newTab` with Shift). */
+  onOpenLink: (href: string, newTab: boolean) => void;
   /** Root-relative path of the open note, which image srcs are relative to. */
   notePath: () => string | null;
   /** Save an image file beside the note; resolves to its href. */

@@ -31,8 +31,8 @@
     /** Muted text at the end of the row (e.g. a count). */
     trailing?: string;
     ontoggle?: () => void;
-    /** Clicking the row (or Enter on it). */
-    onselect: () => void;
+    /** Clicking the row (or Enter on it); also a middle-click, with button 1. */
+    onselect: (e: MouseEvent) => void;
     icon: Snippet;
     /** Buttons shown at the right edge while the row is hovered or focused. */
     actions?: Snippet;
@@ -52,6 +52,12 @@
   )}
   style:padding-inline-start="{4 + depth * STEP}px"
   onclick={onselect}
+  onauxclick={(e) => {
+    if (e.button === 1) onselect(e);
+  }}
+  onmousedown={(e) => {
+    if (e.button === 1) e.preventDefault(); // no autoscroll on middle-click
+  }}
 >
   <span
     class="relative grid size-5 shrink-0 place-items-center text-sidebar-foreground/50 [&_svg]:size-4"
@@ -97,6 +103,7 @@
       role="presentation"
       class="flex shrink-0 items-center opacity-0 group-focus-within/row:opacity-100 group-hover/row:opacity-100 has-data-[state=open]:opacity-100"
       onclick={(e) => e.stopPropagation()}
+      onauxclick={(e) => e.stopPropagation()}
     >
       {@render actions()}
     </div>

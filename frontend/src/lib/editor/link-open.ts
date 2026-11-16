@@ -3,8 +3,11 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 
 export interface LinkOpenOptions {
-  /** Called with the link's raw href (e.g. "../Plan.md"), as written in the note. */
-  onOpen: (href: string) => void;
+  /**
+   * Called with the link's raw href (e.g. "../Plan.md"), as written in the
+   * note; `newTab` when Shift was held too.
+   */
+  onOpen: (href: string, newTab: boolean) => void;
 }
 
 /** The link under a Cmd/Ctrl+click inside the editor, or null. */
@@ -15,8 +18,9 @@ function modClickedLink(view: EditorView, event: MouseEvent): HTMLAnchorElement 
 }
 
 /**
- * Cmd/Ctrl+click follows a link. A plain click keeps placing the caret,
- * since the editor is always editable.
+ * Cmd/Ctrl+click follows a link (Cmd/Ctrl+Shift+click opens it in a new
+ * tab). A plain click keeps placing the caret, since the editor is always
+ * editable.
  */
 export const LinkOpen = Extension.create<LinkOpenOptions>({
   name: "linkOpen",
@@ -39,7 +43,7 @@ export const LinkOpen = Extension.create<LinkOpenOptions>({
             // relative path against the app's own URL.
             const href = link?.getAttribute("href");
             if (!href) return false;
-            onOpen(href);
+            onOpen(href, event.shiftKey);
             return true;
           },
           handleDOMEvents: {

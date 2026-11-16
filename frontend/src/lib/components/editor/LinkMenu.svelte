@@ -7,6 +7,7 @@
   import { ExternalLink, FileText, Pencil, Unlink } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import { isExternalLink, normalizeHref } from "$lib/notes/links";
+  import { isMod } from "$lib/platform";
   import LinkInput from "./LinkInput.svelte";
 
   let {
@@ -19,7 +20,7 @@
     revision: number;
     element?: HTMLDivElement;
     /** Follow a link, given its raw href. */
-    onopen?: (href: string) => void;
+    onopen?: (href: string, newTab: boolean) => void;
   } = $props();
 
   let editing = $state(false);
@@ -54,7 +55,7 @@
         {/if}
         <span class="max-w-56 truncate">{href}</span>
       </span>
-      <Button variant="ghost" size="sm" class="h-7 px-2" disabled={!href} onclick={() => onopen?.(href)}>
+      <Button variant="ghost" size="sm" class="h-7 px-2" disabled={!href} onclick={(e) => onopen?.(href, isMod(e))}>
         Open
       </Button>
       <div class="bg-border mx-0.5 h-5 w-px"></div>

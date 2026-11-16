@@ -14,6 +14,7 @@
   import NewEntryMenu from "./new-entry-menu.svelte";
   import NoteActionsMenu from "./note-actions-menu.svelte";
   import TreeRow from "./tree-row.svelte";
+  import { isMod } from "$lib/platform";
   import Self from "./file-tree-item.svelte";
 
   let {
@@ -32,7 +33,8 @@
     activePath: string | null;
     /** Paths of expanded folders, shared by the whole tree. */
     expanded: SvelteSet<string>;
-    onopen: (path: string) => void;
+    /** Open a note; `newTab` for Cmd/Ctrl+click and middle-click. */
+    onopen: (path: string, newTab: boolean) => void;
     /** Ask to create a note or folder inside `parent` ("" is the root). */
     onnew: (kind: EntryKind, parent: string) => void;
     /** Add an image (root-relative path) to the open note. */
@@ -49,10 +51,13 @@
       : `${node.path} — ${activePath ? "click to add to the note" : "open a note to add it"}`,
   );
 
-  function select() {
-    if (node.isDir) toggle();
-    else if (node.isImage) oninsertimage(node.path);
-    else onopen(node.path);
+  function select(e: MouseEvent) {
+    const newTab = isMod(e) || e.button === 1;
+    if (node.isDir) {
+      if (e.button === 0) toggle();
+    } else if (node.isImage) {
+      if (e.button === 0) oninsertimage(node.path);
+    } else onopen(node.path, newTab);
   }
 
   const isOpen = $derived(node.isDir && expanded.has(node.path));

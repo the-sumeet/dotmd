@@ -1,5 +1,5 @@
 import { Extension, type Editor } from "@tiptap/core";
-import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Plugin, PluginKey, type Transaction } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import {
   baseName,
@@ -61,9 +61,20 @@ export interface ImageUploadStorage {
 }
 
 /** Shown where an image goes while it is being saved. */
-type Action = { add: { id: object; pos: number } } | { remove: { id: object } };
+type Action =
+  | { add: { id: object; pos: number } }
+  | { remove: { id: object } }
+  | { clear: true };
 
 const key = new PluginKey<DecorationSet>("imageUpload");
+
+/**
+ * Drop every "Adding image…" placeholder, e.g. from a note's kept editor
+ * state: its uploads finished (or failed) while another note was shown.
+ */
+export function clearImagePlaceholders(tr: Transaction): Transaction {
+  return tr.setMeta(key, { clear: true } satisfies Action);
+}
 
 function placeholderAt(view: EditorView, id: object): number | null {
   const found = key.getState(view.state)?.find(undefined, undefined, (spec) => spec.id === id);
@@ -197,6 +208,8 @@ export const ImageUpload = Extension.create<ImageUploadOptions, ImageUploadStora
               set = set.add(tr.doc, [
                 Decoration.widget(action.add.pos, el, { id: action.add.id }),
               ]);
+            } else if (action && "clear" in action) {
+              set = DecorationSet.empty;
             } else if (action && "remove" in action) {
               set = set.remove(
                 set.find(undefined, undefined, (spec) => spec.id === action.remove.id),

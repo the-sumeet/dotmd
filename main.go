@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"log"
+	"runtime"
 
 	"dotmd/internal/lifecycle"
 	"dotmd/internal/notes"
@@ -64,8 +65,28 @@ func main() {
 		URL: "/",
 	})
 	lifecycle.Attach(life, app, window)
+	if runtime.GOOS == "darwin" {
+		app.Menu.SetApplicationMenu(appMenu(window))
+	}
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// appMenu is the default macOS menu, except Close Window moves from ⌘W to
+// ⇧⌘W, so ⌘W reaches the page and closes a tab.
+func appMenu(window *application.WebviewWindow) *application.Menu {
+	menu := application.NewMenu()
+	menu.AddRole(application.AppMenu)
+	file := menu.AddSubmenu("File")
+	file.Add("Close Window").
+		SetAccelerator("CmdOrCtrl+Shift+W").
+		// Goes through WindowClosing, so pending edits are still saved first.
+		OnClick(func(*application.Context) { window.Close() })
+	menu.AddRole(application.EditMenu)
+	menu.AddRole(application.ViewMenu)
+	menu.AddRole(application.WindowMenu)
+	menu.AddRole(application.HelpMenu)
+	return menu
 }

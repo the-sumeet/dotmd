@@ -10,8 +10,8 @@ export const isMac =
 /** Label for the primary modifier key: "⌘" on macOS, "Ctrl+" elsewhere. */
 export const modKey = isMac ? "⌘" : "Ctrl+";
 
-/** True for Cmd (macOS) / Ctrl (elsewhere) with no Alt. */
-export function isMod(e: KeyboardEvent): boolean {
+/** True for Cmd (macOS) / Ctrl (elsewhere) with no Alt, on a key or a click. */
+export function isMod(e: KeyboardEvent | MouseEvent): boolean {
   return (isMac ? e.metaKey : e.ctrlKey) && !e.altKey;
 }
 

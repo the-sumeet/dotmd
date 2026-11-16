@@ -1,3 +1,15 @@
+<script lang="ts" module>
+  import type { EditorState as State } from "@tiptap/pm/state";
+
+  /** A note's editor state, kept while another note is shown (see snapshot). */
+  export interface EditorSnapshot {
+    state: State;
+    frontmatter: string;
+    /** The note's full markdown that `state` was made from. */
+    markdown: string;
+  }
+</script>
+
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
   import { Editor } from "@tiptap/core";
@@ -5,6 +17,7 @@
   import { createExtensions } from "$lib/editor/extensions";
   import { joinFrontmatter, splitFrontmatter } from "$lib/editor/frontmatter";
   import { refreshImageSrcs } from "$lib/editor/note-image";
+  import { clearImagePlaceholders } from "$lib/editor/image-upload";
   import BubbleMenu from "./BubbleMenu.svelte";
   import LinkMenu from "./LinkMenu.svelte";
   import TableMenu from "./TableMenu.svelte";
@@ -27,7 +40,7 @@
     /** When false the document is read-only (e.g. no note is open). */
     editable?: boolean;
     /** Follow a link (Cmd/Ctrl+click or the link menu), given its raw href. */
-    onopenlink?: (href: string) => void;
+    onopenlink?: (href: string, newTab: boolean) => void;
     /** Root-relative path of the open note; image srcs are relative to it. */
     notePath?: string | null;
     /** Save a pasted, dropped or picked image beside the note; resolves to its href. */
@@ -68,7 +81,7 @@
         bubbleMenu: bubbleElement!,
         tableMenu: tableMenuElement!,
         linkMenu: linkMenuElement!,
-        onOpenLink: (href) => onopenlink?.(href),
+        onOpenLink: (href, newTab) => onopenlink?.(href, newTab),
         // Read at render time, so images resolve against the note now open.
         notePath: () => notePath,
         uploadImage: (file) => onuploadimage(file),
@@ -141,6 +154,32 @@
     editor.commands.setContent(body, { contentType: "markdown", emitUpdate: false });
     const { doc, plugins, selection } = editor.state;
     editor.view.updateState(EditorState.create({ doc, plugins, selection }));
+    refreshImages();
+  }
+
+  /**
+   * The document with its undo history and selection, to put back with
+   * restore() when the note is shown again. Pending edits are flushed first,
+   * so `markdown` is the text the state stands for.
+   */
+  export function snapshot(): EditorSnapshot | null {
+    if (!editor || editor.isDestroyed) return null;
+    flush();
+    return { state: editor.state, frontmatter, markdown: value };
+  }
+
+  /** Show a note from its snapshot; like setMarkdown, but keeps undo history. */
+  export function restore(snap: EditorSnapshot) {
+    if (!editor) return;
+    clearTimeout(syncTimer);
+    syncTimer = undefined;
+    pending = false;
+    frontmatter = snap.frontmatter;
+    editor.view.updateState(snap.state);
+    // Placeholders whose uploads settled while the note was hidden would
+    // spin forever. Dispatching also bumps `revision`, so the menus re-read
+    // the restored selection instead of the previous note's.
+    editor.view.dispatch(clearImagePlaceholders(editor.state.tr));
     refreshImages();
   }
 

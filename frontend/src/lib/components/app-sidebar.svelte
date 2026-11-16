@@ -30,7 +30,7 @@
   } from "$lib/notes/notes";
   import type { ComponentProps, Snippet } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
-  import { modKey } from "$lib/platform";
+  import { isMod, modKey } from "$lib/platform";
 
   let {
     ref = $bindable(null),
@@ -52,7 +52,8 @@
     tags?: Tag[];
     /** Root-relative path of the open note. */
     activePath?: string | null;
-    onopen?: (path: string) => void | Promise<void>;
+    /** Open a note, in a new tab or in place of the active one. */
+    onopen?: (path: string, newTab: boolean) => void | Promise<void>;
     /**
      * Create a note or folder from a root-relative name (may contain "/").
      * Resolves to the created path; rejects with a user-facing message.
@@ -169,8 +170,8 @@
    * visible. The sheet stays open if the switch failed (e.g. the current note
    * could not be saved), so the user can retry.
    */
-  async function openNote(path: string) {
-    await onopen?.(path);
+  async function openNote(path: string, newTab = false) {
+    await onopen?.(path, newTab);
     if (sidebar.isMobile && activePath === path) sidebar.setOpenMobile(false);
   }
 
@@ -237,7 +238,7 @@
           expanded={open}
           trailing={String(tag.notes.length)}
           ontoggle={toggle}
-          onselect={toggle}
+          onselect={(e) => e.button === 0 && toggle()}
         >
           {#snippet icon()}<HashIcon />{/snippet}
         </TreeRow>
@@ -248,7 +249,7 @@
               label={noteTitle(path)}
               title={path}
               active={path === activePath}
-              onselect={() => openNote(path)}
+              onselect={(e) => openNote(path, isMod(e) || e.button === 1)}
             >
               {#snippet icon()}<FileTextIcon />{/snippet}
               {#snippet actions()}
